@@ -44,6 +44,7 @@ public class AetherTrader
         System.out.println("4. Cancel order");
         System.out.println("5. Place sell limit order");
         System.out.println("6. Place buy limit order");
+        System.out.println("9. Start automatic trading programme");
         System.out.println("0. Quit");
     }
 
@@ -214,6 +215,19 @@ public class AetherTrader
     {
         JSONObject data = new JSONObject(sendPublicRequest("/api/v2/ticker/btceur"));
         return new BigDecimal(data.getString("last"));
+    }
+
+    public void startAuto()
+    {
+        System.out.println("This will all the program to begin trading automaticaly according to the in-built logic. Are you sure you want to continue?");
+        if (userConfirm())
+        {
+            System.out.println("Bold move.");
+        }
+        else
+        {
+            System.out.println("Wise choice.");
+        }
     }
 
     private String sendPublicRequest(String endPoint)
@@ -419,6 +433,8 @@ public class AetherTrader
                 case 6:
                     System.out.println(trader.placeBuyLimitOrder());
                     break;
+                case 9:
+                    System.out.println(trader.startAuto());
                 case 0:
                     break menu;
                 default:
