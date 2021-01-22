@@ -4,6 +4,7 @@ import org.json.*;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
+import java.io.IOError;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.net.URI;
@@ -14,8 +15,6 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.List;
-import java.util.NoSuchElementException;
-import java.util.Scanner;
 import java.util.UUID;
 
 public class AetherTrader
@@ -44,21 +43,50 @@ public class AetherTrader
         System.out.println("3. Get open orders");
         System.out.println("4. Cancel order");
         System.out.println("5. Place sell limit order");
+        System.out.println("6. Place buy limit order");
         System.out.println("0. Quit");
     }
 
-    public int getChoice(Scanner sc)
+    public int getChoice()
     {
         int choice = 0;
         try
         {
-            choice = sc.nextInt();
+            choice = Integer.parseInt(getUserInput());
         }
-        catch (NoSuchElementException e)
+        catch (Exception e)
         {
             choice = -1;
         }
         return choice;
+    }
+
+    private String getUserInput()
+    {
+        String input = "";
+        try
+        {
+            input = System.console().readLine();
+        }
+        catch (IOError e)
+        {
+            input = "";
+        }
+        return input;
+    }
+
+    private boolean userConfirm()
+    {
+        System.out.print("Confirm? [yes/no]: ");
+        String input = getUserInput();
+        if (input.toLowerCase().equals("yes"))
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
     }
 
     public String getBTCData()
@@ -103,48 +131,89 @@ public class AetherTrader
         }
     }
 
-    public String cancelOrder(Scanner sc)
+    public String cancelOrder()
     {
-        sc.nextLine();
         System.out.print("Order ID: ");
-        // TODO input checking
-        String id = sc.nextLine();
+        String id = getUserInput();
         String[] params = new String[]
         {
             "id=" + id
         };
-        JSONObject data = new JSONObject(sendPrivateRequest("/api/v2/cancel_order/", params));
-        if (!data.has("error"))
+
+        if (userConfirm())
         {
-            return "Success. Order " +  data.get("id").toString() + " canceled";
+            JSONObject data = new JSONObject(sendPrivateRequest("/api/v2/cancel_order/", params));
+            if (!data.has("error"))
+            {
+                return "Success. Order " +  data.get("id").toString() + " canceled";
+            }
+            else
+            {
+                return "Error. Failed to cancel order.";
+            }
         }
         else
         {
-            return "Error. Failed to cancel order.";
-        }
+            return "Operation cancelled.";
+        }        
     }
 
-    public String placeSellLimitOrder(Scanner sc)
+    public String placeSellLimitOrder()
     {
-        sc.nextLine();
         System.out.print("Amount (BTC): ");
-        BigDecimal amt =  new BigDecimal(sc.next());
+        BigDecimal amt =  new BigDecimal(System.console().readLine());
         System.out.print("Price (EUR): ");
-        BigDecimal price = new BigDecimal(sc.next());
+        BigDecimal price = new BigDecimal(System.console().readLine());
         String[] params = new String[]
         {
             "amount=" + amt,
             "price=" + price
         };
         JSONObject data = new JSONObject(sendPrivateRequest("/api/v2/sell/btceur/", params));
-        if (!data.has("error"))
+        if (!data.has("status"))
         {
             return "Success. Order placed:\n" +  formatJSON(data);
         }
         else
         {
-            return "Error. Failed to cancel order:\n" + formatJSON(data);
+            return "Error. Failed to place order:\n" + formatJSON(data);
         }
+    }
+
+    public String placeBuyLimitOrder()
+    {
+        System.out.print("Amount (BTC): ");
+        BigDecimal amt = new BigDecimal(System.console().readLine());
+        System.out.print("Price (EUR): ");
+        BigDecimal price = new BigDecimal(System.console().readLine());
+        String[] params = new String[]
+        {
+            "amount=" + amt,
+            "price=" + price
+        };
+        System.out.println(String.format("Place buy limit order for %.8f BTC at €%.2f (Value: €%.2f)", amt, price, amt.multiply(price)));
+        if (userConfirm())
+        {
+            JSONObject data = new JSONObject(sendPrivateRequest("/api/v2/buy/btceur/", params));
+            if (!data.has("status"))
+            {
+                return "Success. Order placed:\n" +  formatJSON(data);
+            }
+            else
+            {
+                return "Error. Failed to place order:\n" + formatJSON(data);
+            }
+        }
+        else
+        {
+            return "Operation cancelled.";
+        }
+    }
+
+    private BigDecimal getBTCPrice()
+    {
+        JSONObject data = new JSONObject(sendPublicRequest("/api/v2/ticker/btceur"));
+        return new BigDecimal(data.getString("last"));
     }
 
     private String sendPublicRequest(String endPoint)
@@ -323,13 +392,12 @@ public class AetherTrader
     public static void main(String[] args)
     {
         AetherTrader trader = new AetherTrader();
-        Scanner sc = new Scanner(System.in);
-        sc.useDelimiter(System.lineSeparator());
+
         menu:
         while (true)
         {
             trader.showMenu();
-            int choice = trader.getChoice(sc);
+            int choice = trader.getChoice();
             
             switch (choice)
             {
@@ -343,10 +411,14 @@ public class AetherTrader
                     System.out.println(trader.getOpenOrders());
                     break;
                 case 4:
-                    System.out.println(trader.cancelOrder(sc));
+                    System.out.println(trader.cancelOrder());
                     break;
                 case 5:
-                    System.out.println(trader.placeSellLimitOrder(sc));
+                    System.out.println(trader.placeSellLimitOrder());
+                    break;
+                case 6:
+                    System.out.println(trader.placeBuyLimitOrder());
+                    break;
                 case 0:
                     break menu;
                 default:
@@ -354,6 +426,5 @@ public class AetherTrader
                     break;
             }
         }
-        sc.close();
     }
 }
