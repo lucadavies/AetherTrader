@@ -35,60 +35,7 @@ public class AetherTrader
         }
     }
 
-    public void showMenu()
-    {
-        System.out.println("----- MENU -----");
-        System.out.println("1. Get BTC Info");
-        System.out.println("2. Get balance");
-        System.out.println("3. Get open orders");
-        System.out.println("4. Cancel order");
-        System.out.println("5. Place sell limit order");
-        System.out.println("6. Place buy limit order");
-        System.out.println("9. Start automatic trading programme");
-        System.out.println("0. Quit");
-    }
-
-    public int getChoice()
-    {
-        int choice = 0;
-        try
-        {
-            choice = Integer.parseInt(getUserInput());
-        }
-        catch (Exception e)
-        {
-            choice = -1;
-        }
-        return choice;
-    }
-
-    private String getUserInput()
-    {
-        String input = "";
-        try
-        {
-            input = System.console().readLine();
-        }
-        catch (IOError e)
-        {
-            input = "";
-        }
-        return input;
-    }
-
-    private boolean userConfirm()
-    {
-        System.out.print("Confirm? [yes/no]: ");
-        String input = getUserInput();
-        if (input.toLowerCase().equals("yes"))
-        {
-            return true;
-        }
-        else
-        {
-            return false;
-        }
-    }
+    //#region Trading methods
 
     public String getBTCData()
     {
@@ -211,24 +158,101 @@ public class AetherTrader
         }
     }
 
+    //#endregion
+    
+    //#region Auto Trading methods
+
+    public String startAuto()
+    {
+        System.out.println("This will all the program to begin trading automaticaly according to the in-built logic. Are you sure you want to continue?");
+        if (userConfirm())
+        {
+            return "Bold move.";
+        }
+        else
+        {
+            return "Wise choice.";
+        }
+    }
+
+    //#endregion
+
+    //#region Utilities
+
+    public void showMenu()
+    {
+        System.out.println("----- MENU -----");
+        System.out.println("1. Get BTC Info");
+        System.out.println("2. Get balance");
+        System.out.println("3. Get open orders");
+        System.out.println("4. Cancel order");
+        System.out.println("5. Place sell limit order");
+        System.out.println("6. Place buy limit order");
+        System.out.println("9. Start automatic trading programme");
+        System.out.println("0. Quit");
+    }
+
+    public int getChoice()
+    {
+        int choice = 0;
+        try
+        {
+            choice = Integer.parseInt(getUserInput());
+        }
+        catch (Exception e)
+        {
+            choice = -1;
+        }
+        return choice;
+    }
+
+    private String getUserInput()
+    {
+        String input = "";
+        try
+        {
+            input = System.console().readLine();
+        }
+        catch (IOError e)
+        {
+            input = "";
+        }
+        return input;
+    }
+
+    private boolean userConfirm()
+    {
+        System.out.print("Confirm? [yes/no]: ");
+        String input = getUserInput();
+        if (input.toLowerCase().equals("yes"))
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
     private BigDecimal getBTCPrice()
     {
         JSONObject data = new JSONObject(sendPublicRequest("/api/v2/ticker/btceur"));
         return new BigDecimal(data.getString("last"));
     }
 
-    public void startAuto()
+    private String formatJSON(JSONObject obj)
     {
-        System.out.println("This will all the program to begin trading automaticaly according to the in-built logic. Are you sure you want to continue?");
-        if (userConfirm())
+        String s = "";
+        for (String field : obj.keySet())
         {
-            System.out.println("Bold move.");
+            s += String.format("%-15s: %s\n", field, obj.get(field));
         }
-        else
-        {
-            System.out.println("Wise choice.");
-        }
+        return s;
     }
+
+    //#endregion
+
+    //#region HTTP Requests
 
     private String sendPublicRequest(String endPoint)
     {
@@ -393,15 +417,7 @@ public class AetherTrader
         }
     }
 
-    private String formatJSON(JSONObject obj)
-    {
-        String s = "";
-        for (String field : obj.keySet())
-        {
-            s += String.format("%-15s: %s\n", field, obj.get(field));
-        }
-        return s;
-    }
+    //#endregion
 
     public static void main(String[] args)
     {
