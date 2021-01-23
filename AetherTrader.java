@@ -13,7 +13,9 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.text.SimpleDateFormat;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 
@@ -21,11 +23,6 @@ public class AetherTrader
 {
     private String apiKey = "";
     private String apiKeySecret = "";
-
-    private long startTime;
-    private TradingState tradingState;
-    private MarketState marketState;
-    private JSONObject internalError;
 
     private enum TradingState
     {
@@ -46,6 +43,12 @@ public class AetherTrader
         VOLATILE_DW,
         UNKNOWN
     }
+
+    private long startTime;
+    private TradingState tradingState = TradingState.HOLD_IN;
+    private MarketState marketState = MarketState.UNKNOWN;
+    private JSONObject internalError;
+    static public SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM/yy hh:mm:ss");
 
     public AetherTrader()
     {
@@ -194,7 +197,7 @@ public class AetherTrader
         System.out.println("This will all the program to begin trading automaticaly according to the in-built logic. Are you sure you want to continue?");
         if (userConfirm())
         {
-            run(1);
+            run(0.5);
             return "Bold move.";
         }
         else
@@ -203,9 +206,9 @@ public class AetherTrader
         }
     }
 
-    private void run(int hrsToRun)
+    private void run(double hrsToRun)
     {
-        int secondsToRun = hrsToRun * 60 * 60;
+        double secondsToRun = hrsToRun * 60 * 60;
         startTime = System.currentTimeMillis();
         long elapsedTime = 0;
         do
@@ -232,17 +235,151 @@ public class AetherTrader
                     break;
             }
 
-            elapsedTime = (System.currentTimeMillis() - startTime) / 1000;
-            if (elapsedTime % 10 == 0)
+            elapsedTime = (System.currentTimeMillis() - startTime) / 1000L;
+            
+            if (elapsedTime % 10L == 0)
             {
-                System.out.println(elapsedTime + "s");
+                float percentChange = calculatePercentChange();
+                marketState = getMarketState(percentChange);
+
+                System.out.println(String.format("[%s] %-4ss: %s (%+.2f%%)", dateFormat.format(new Date()), elapsedTime, marketState, percentChange));
             }
         } while (elapsedTime < secondsToRun);
     }
 
     //#endregion
 
-    //#region Utilities
+    //#region Trading Utilities
+
+    private BigDecimal getBTCPrice()
+    {
+        JSONObject data = new JSONObject(sendPublicRequest("/api/v2/ticker/btceur"));
+        return new BigDecimal(data.getString("last"));
+    }
+
+    private JSONObject getOHLCData(int step, int limit)
+    {
+        if (!isValidOHLCStep(step) || limit > 1000 || limit < 1)
+        {
+            return internalError;
+        }
+
+        String[] params = new String[]
+        {
+            "step=" + step,
+            "limit=" + limit
+        };
+        JSONObject OhlcData = new JSONObject(sendPublicRequest("/api/v2/ohlc/btceur/", params));
+        if (!OhlcData.has("code"))
+        {
+            return OhlcData.getJSONObject("data");
+        }
+        else
+        {
+            return internalError;
+        }
+    }
+
+    public float calculatePercentChange()
+    {
+        JSONObject data = getOHLCData(300, 24); //five minute interval, for two hours back
+        if (data.has("error"))
+        {
+            //throw new Exception();
+        }
+        float diff = 0;
+        JSONArray vals = data.getJSONArray("ohlc");
+
+        JSONObject v;
+        float open;
+        float close;
+        for (int i = 0; i < vals.length(); i++)
+        {
+            v = vals.getJSONObject(i);
+            open = v.getFloat("open");
+            close = v.getFloat("close");
+            diff += close - open;
+        }
+        
+        float firstOpen = vals.getJSONObject(0).getFloat("open");
+        float lastClose = vals.getJSONObject(vals.length() - 1).getFloat("close");
+        float percentChange = (diff / firstOpen) * 100;
+        //System.out.println(String.format("BTC moved %+.2f%% in the last %d minutes.", percentChange, (1800 / 60) * 8));
+        //System.out.println(String.format("%.2f -> %.2f", firstOpen, lastClose));
+        return percentChange;
+    }
+
+    private boolean isValidOHLCStep(int step)
+    {
+        switch (step)
+        {
+            case 60:
+            case 180:
+            case 300:
+            case 900:
+            case 1800:
+            case 3600:
+            case 7200:
+            case 14400:
+            case 21600:
+            case 43200:
+            case 86400:
+            case 259200:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private MarketState getMarketState(float percent)
+    {
+        if (percent < 0.1 && percent > -0.1) //too small to consider
+        {
+            return MarketState.FLAT;
+        }
+        else
+        {
+            if (percent > 0)  //upward movement
+            {
+                if (percent < 1.5)
+                {
+                    return MarketState.UP;  // UP 0.1 - 1.5%
+                }
+                else if (percent < 5)
+                {
+                    return MarketState.UUP; // UP > 1.5 - 5%
+                }
+                else
+                {
+                    return MarketState.VOLATILE_UP; // UP > 5%
+                }
+            }
+            else                    //downward movement
+            {
+                if (percent > -1.5)
+                {
+                    return MarketState.DW;  // DOWN 0.1 - 1.5%
+                }
+                else if (percent > -5)
+                {
+                    return MarketState.DDW; // DOWN > 1.5%
+                }
+                else
+                {
+                    return MarketState.VOLATILE_DW; // DOWN > 5%
+                }
+            }
+        }
+    }
+
+  // private TradingState calculateTradingState()
+    // {
+
+    // }
+
+    ////#endregion
+
+    //#region Interface Utilities
 
     public void showMenu()
     {
@@ -299,12 +436,6 @@ public class AetherTrader
         }
     }
 
-    private BigDecimal getBTCPrice()
-    {
-        JSONObject data = new JSONObject(sendPublicRequest("/api/v2/ticker/btceur"));
-        return new BigDecimal(data.getString("last"));
-    }
-
     private String formatJSON(JSONObject obj)
     {
         String s = "";
@@ -314,122 +445,6 @@ public class AetherTrader
         }
         return s;
     }
-
-    private JSONObject getOHLCData(int step, int limit)
-    {
-        if (!isValidOHLCStep(step) || limit > 1000 || limit < 1)
-        {
-            return internalError;
-        }
-
-        String[] params = new String[]
-        {
-            "step=" + step,
-            "limit=" + limit
-        };
-        JSONObject OhlcData = new JSONObject(sendPublicRequest("/api/v2/ohlc/btceur/", params));
-        if (!OhlcData.has("code"))
-        {
-            return OhlcData.getJSONObject("data");
-        }
-        else
-        {
-            return internalError;
-        }
-    }
-
-    private boolean isValidOHLCStep(int step)
-    {
-        switch (step)
-        {
-            case 60:
-            case 180:
-            case 300:
-            case 900:
-            case 1800:
-            case 3600:
-            case 7200:
-            case 14400:
-            case 21600:
-            case 43200:
-            case 86400:
-            case 259200:
-                return true;
-            default:
-                return false;
-        }
-    }
-
-    public MarketState calculateMarketState()
-    {
-        JSONObject data = getOHLCData(1800, 8);
-        if (data.has("error"))
-        {
-            return MarketState.UNKNOWN;
-        }
-        float diff = 0;
-        JSONArray vals = data.getJSONArray("ohlc");
-
-        JSONObject v;
-        float open;
-        float close;
-        for (int i = 0; i < vals.length(); i++)
-        {
-            v = vals.getJSONObject(i);
-            open = v.getFloat("open");
-            close = v.getFloat("close");
-            diff += close - open;
-        }
-        
-        float firstOpen = vals.getJSONObject(0).getFloat("open");
-        float lastClose = vals.getJSONObject(vals.length() - 1).getFloat("close");
-        float percentChange = (diff / firstOpen) * 100;
-        System.out.println(String.format("BTC moved %+.2f%% in the last %d minutes.", percentChange, (1800 / 60) * 8));
-        System.out.println(String.format("%.2f -> %.2f", firstOpen, lastClose));
-        
-        if (percentChange < 0.1 && percentChange > -0.1) //too small to consider
-        {
-            return MarketState.FLAT;
-        }
-        else
-        {
-            if (percentChange > 0)  //upward movement
-            {
-                if (percentChange < 1.5)
-                {
-                    return MarketState.UP;  // UP 0.1 - 1.5%
-                }
-                else if (percentChange < 5)
-                {
-                    return MarketState.UUP; // UP > 1.5 - 5%
-                }
-                else
-                {
-                    return MarketState.VOLATILE_UP; // UP > 5%
-                }
-            }
-            else                    //downward movement
-            {
-                if (percentChange > -1.5)
-                {
-                    return MarketState.DW;  // DOWN 0.1 - 1.5%
-                }
-                else if (percentChange > 5)
-                {
-                    return MarketState.DDW; // DOWN > 1.5%
-                }
-                else
-                {
-                    return MarketState.VOLATILE_DW; // DOWN > 5%
-                }
-            }
-        }
-    }
-
-    // private TradingState calculateTradingState()
-    // {
-
-    // }
 
     //#endregion
 
@@ -666,8 +681,9 @@ public class AetherTrader
                     break;
                 case 9:
                     System.out.println(trader.startAuto());
+                    break;
                 case 10:
-                    System.out.println(trader.calculateMarketState());
+                    System.out.println(trader.calculatePercentChange());
                     break;
                 case 0:
                     break menu;
