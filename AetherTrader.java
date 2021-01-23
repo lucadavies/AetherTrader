@@ -24,29 +24,46 @@ public class AetherTrader
     private String apiKey = "";
     private String apiKeySecret = "";
 
+    /**
+     * Represents possible status of BTC holding.
+     * Expected progression: HOLD_IN -> LONG -> HOLD_OUT -> SHORT -> [repeat].
+     */
     private enum TradingState
     {
-        SHORT,
-        LONG,
+        /** Value in market. Waiting for sell indications. */
         HOLD_IN,
-        HOLD_OUT
+        /** Waiting to sell high. Limit sell placed. */
+        LONG,
+        /** Value out of market. Waiting for buy indications. */
+        HOLD_OUT,
+        /** Waiting to buy low. Limit buy placed. */
+        SHORT
     }
 
     private enum MarketState
     {
+        /** Up > 5% */
         VOLATILE_UP,
+        /** Up 2.5% - 5% */
         UUP,
+        /** Up 0.25% - 2.5% */
         UP,
+        /** Between -0.25% and +0.25% */
         FLAT,
+        /** Down  0.25% - 2.5% */
         DW,
+        /** Down 2.5% - 5% */
         DDW,
+        /** Down > 5% */
         VOLATILE_DW,
+        /** An error caused a failure to measure market state. */
         UNKNOWN
     }
 
     private long startTime;
     private TradingState tradingState = TradingState.HOLD_IN;
     private MarketState marketState = MarketState.UNKNOWN;
+    public static CircularList<MarketState> prevStates = new CircularList<MarketState>(5);
     private JSONObject internalError;
     static public SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM/yy hh:mm:ss");
 
@@ -194,7 +211,7 @@ public class AetherTrader
 
     public String startAuto()
     {
-        System.out.println("This will all the program to begin trading automaticaly according to the in-built logic. Are you sure you want to continue?");
+        System.out.println("This will allow the program to begin trading automaticaly according to the in-built logic. Are you sure you want to continue?");
         if (userConfirm())
         {
             run(0.5);
@@ -213,30 +230,9 @@ public class AetherTrader
         long elapsedTime = 0;
         do
         {
-            try
-            {
-                Thread.sleep(500);
-            } catch (InterruptedException e)
-            {
-                System.out.println("Wait interrupted. Continuing.");
-            }
-
-            switch (tradingState)
-            {
-                case SHORT:
-                    break;
-                case LONG:
-                    break;
-                case HOLD_IN:
-                    break;
-                case HOLD_OUT:
-                    break;
-                default:
-                    break;
-            }
-
             elapsedTime = (System.currentTimeMillis() - startTime) / 1000L;
             
+            //get market state now
             if (elapsedTime % 10L == 0)
             {
                 float percentChange = calculatePercentChange();
@@ -244,7 +240,39 @@ public class AetherTrader
 
                 System.out.println(String.format("[%s] %-4ss: %s (%+.2f%%)", dateFormat.format(new Date()), elapsedTime, marketState, percentChange));
             }
+
+            //decide what to do
+            TradingState nextState = decideNextState();
+            
+
+            //wait
+            try
+            {
+                Thread.sleep(500);
+            } catch (InterruptedException e)
+            {
+                System.out.println("Wait interrupted. Continuing.");
+            }
         } while (elapsedTime < secondsToRun);
+    }
+
+    private TradingState decideNextState()
+    {
+        switch (tradingState)
+        {
+            case HOLD_IN:
+
+                break;
+            case LONG:
+                break;
+            case HOLD_OUT:
+                break;
+            case SHORT:
+                break;
+            default:
+                break;
+        }
+        return null;
     }
 
     //#endregion
@@ -282,7 +310,7 @@ public class AetherTrader
 
     public float calculatePercentChange()
     {
-        JSONObject data = getOHLCData(300, 24); //five minute interval, for two hours back
+        JSONObject data = getOHLCData(60, 60); //one minute interval, for one hour back
         if (data.has("error"))
         {
             //throw new Exception();
@@ -333,7 +361,7 @@ public class AetherTrader
 
     private MarketState getMarketState(float percent)
     {
-        if (percent < 0.1 && percent > -0.1) //too small to consider
+        if (percent < 0.25 && percent > -0.25) //too small to consider
         {
             return MarketState.FLAT;
         }
@@ -343,7 +371,7 @@ public class AetherTrader
             {
                 if (percent < 1.5)
                 {
-                    return MarketState.UP;  // UP 0.1 - 1.5%
+                    return MarketState.UP;  // UP 0.25 - 1.5%
                 }
                 else if (percent < 5)
                 {
@@ -358,7 +386,7 @@ public class AetherTrader
             {
                 if (percent > -1.5)
                 {
-                    return MarketState.DW;  // DOWN 0.1 - 1.5%
+                    return MarketState.DW;  // DOWN 0.25 - 1.5%
                 }
                 else if (percent > -5)
                 {
@@ -681,9 +709,6 @@ public class AetherTrader
                     break;
                 case 9:
                     System.out.println(trader.startAuto());
-                    break;
-                case 10:
-                    System.out.println(trader.calculatePercentChange());
                     break;
                 case 0:
                     break menu;
