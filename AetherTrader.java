@@ -22,8 +22,33 @@ public class AetherTrader
     private String apiKey = "";
     private String apiKeySecret = "";
 
+    private long startTime;
+    private TradingState tradingState;
+    private MarketState marketState;
+    private JSONObject internalError;
+
+    private enum TradingState
+    {
+        SHORT,
+        LONG,
+        HOLD_IN,
+        HOLD_OUT
+    }
+
+    private enum MarketState
+    {
+        UUP,
+        UP,
+        FLAT,
+        DW,
+        DDW,
+        UNKNOWN
+    }
+
     public AetherTrader()
     {
+        internalError = new JSONObject();
+        internalError.put("error", "Internal AetherTrader Error");
         try
         {
             apiKey = Files.readString(Paths.get("key"));
@@ -167,12 +192,50 @@ public class AetherTrader
         System.out.println("This will all the program to begin trading automaticaly according to the in-built logic. Are you sure you want to continue?");
         if (userConfirm())
         {
+            run(1);
             return "Bold move.";
         }
         else
         {
             return "Wise choice.";
         }
+    }
+
+    private void run(int hrsToRun)
+    {
+        int secondsToRun = hrsToRun * 60 * 60;
+        startTime = System.currentTimeMillis();
+        long elapsedTime = 0;
+        do
+        {
+            try
+            {
+                Thread.sleep(500);
+            } catch (InterruptedException e)
+            {
+                System.out.println("Wait interrupted. Continuing.");
+            }
+
+            switch (tradingState)
+            {
+                case SHORT:
+                    break;
+                case LONG:
+                    break;
+                case HOLD_IN:
+                    break;
+                case HOLD_OUT:
+                    break;
+                default:
+                    break;
+            }
+
+            elapsedTime = (System.currentTimeMillis() - startTime) / 1000;
+            if (elapsedTime % 10 == 0)
+            {
+                System.out.println(elapsedTime + "s");
+            }
+        } while (elapsedTime < secondsToRun);
     }
 
     //#endregion
@@ -250,6 +313,85 @@ public class AetherTrader
         return s;
     }
 
+    private JSONObject getOHLCData(int step, int limit)
+    {
+        if (!isValidOHLCStep(step) || limit > 1000 || limit < 1)
+        {
+            return internalError;
+        }
+
+        String[] params = new String[]
+        {
+            "step=" + step,
+            "limit=" + limit
+        };
+        JSONObject OhlcData = new JSONObject(sendPublicRequest("/api/v2/ohlc/btceur/", params));
+        if (!OhlcData.has("code"))
+        {
+            return OhlcData.getJSONObject("data");
+        }
+        else
+        {
+            return internalError;
+        }
+    }
+
+    private boolean isValidOHLCStep(int step)
+    {
+        switch (step)
+        {
+            case 60:
+            case 180:
+            case 300:
+            case 900:
+            case 1800:
+            case 3600:
+            case 7200:
+            case 14400:
+            case 21600:
+            case 43200:
+            case 86400:
+            case 259200:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    public MarketState calculateMarketState()
+    {
+        JSONObject data = getOHLCData(1800, 8);
+        if (data.has("error"))
+        {
+            return MarketState.UNKNOWN;
+        }
+        float diff = 0;
+        JSONArray vals = data.getJSONArray("ohlc");
+
+        JSONObject v;
+        float open;
+        float close;
+        for (int i = 0; i < vals.length(); i++)
+        {
+            v = vals.getJSONObject(i);
+            open = v.getFloat("open");
+            close = v.getFloat("close");
+            diff += close - open;
+        }
+        
+        float firstOpen = vals.getJSONObject(0).getFloat("open");
+        float lastClose = vals.getJSONObject(vals.length() - 1).getFloat("close");
+        float percentChange = (diff / firstOpen) * 100;
+        System.out.println(String.format("BTC moved %+.2f%% in the last %d minutes.", percentChange, (1800 / 60) * 8));
+        System.out.println(String.format("%.2f -> %.2f", firstOpen, lastClose));
+        return null;
+    }
+
+    // private TradingState calculateTradingState()
+    // {
+
+    // }
+
     //#endregion
 
     //#region HTTP Requests
@@ -258,6 +400,40 @@ public class AetherTrader
     {
         String urlHost = "www.bitstamp.net";
         String urlPath = endPoint;
+
+        try
+        {
+            HttpClient client = HttpClient.newHttpClient();
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("https://" + urlHost + urlPath))
+                    .GET()
+                    .build();
+
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+            if (response.statusCode() != 200)
+            {
+                System.out.println("Error got response code " + response.statusCode());
+                throw new RuntimeException("Status code not 200");
+            }
+
+            String resp = response.body();
+            return resp;
+        } catch (Exception e)
+        {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private String sendPublicRequest(String endPoint, String[] params)
+    {
+        String urlHost = "www.bitstamp.net";
+        String urlPath = endPoint;
+        urlPath += "?";
+        for (String param : params)
+        {
+            urlPath += "&" + param;
+        }
 
         try
         {
@@ -451,6 +627,9 @@ public class AetherTrader
                     break;
                 case 9:
                     System.out.println(trader.startAuto());
+                case 10:
+                    trader.calculateMarketState();
+                    break;
                 case 0:
                     break menu;
                 default:
