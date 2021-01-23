@@ -37,11 +37,13 @@ public class AetherTrader
 
     private enum MarketState
     {
+        VOLATILE_UP,
         UUP,
         UP,
         FLAT,
         DW,
         DDW,
+        VOLATILE_DW,
         UNKNOWN
     }
 
@@ -384,7 +386,44 @@ public class AetherTrader
         float percentChange = (diff / firstOpen) * 100;
         System.out.println(String.format("BTC moved %+.2f%% in the last %d minutes.", percentChange, (1800 / 60) * 8));
         System.out.println(String.format("%.2f -> %.2f", firstOpen, lastClose));
-        return null;
+        
+        if (percentChange < 0.1 && percentChange > -0.1) //too small to consider
+        {
+            return MarketState.FLAT;
+        }
+        else
+        {
+            if (percentChange > 0)  //upward movement
+            {
+                if (percentChange < 1.5)
+                {
+                    return MarketState.UP;  // UP 0.1 - 1.5%
+                }
+                else if (percentChange < 5)
+                {
+                    return MarketState.UUP; // UP > 1.5 - 5%
+                }
+                else
+                {
+                    return MarketState.VOLATILE_UP; // UP > 5%
+                }
+            }
+            else                    //downward movement
+            {
+                if (percentChange > -1.5)
+                {
+                    return MarketState.DW;  // DOWN 0.1 - 1.5%
+                }
+                else if (percentChange > 5)
+                {
+                    return MarketState.DDW; // DOWN > 1.5%
+                }
+                else
+                {
+                    return MarketState.VOLATILE_DW; // DOWN > 5%
+                }
+            }
+        }
     }
 
     // private TradingState calculateTradingState()
@@ -628,7 +667,7 @@ public class AetherTrader
                 case 9:
                     System.out.println(trader.startAuto());
                 case 10:
-                    trader.calculateMarketState();
+                    System.out.println(trader.calculateMarketState());
                     break;
                 case 0:
                     break menu;
