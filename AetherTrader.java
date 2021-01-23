@@ -19,6 +19,19 @@ import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 
+/*  TODO Write method to find current TradingState on startup (currently assumes HOLD_IN). Query balance and open orders.
+    TODO ensure implementation of lastTransactionPrice
+    TODO Write logic for decision making
+        use fixed profit margins: 
+            HOLD_IN -> LONG caused by placing limit sell ~1.5% above last transaction price
+            HOLD_OUT -> SHORT caused by placing limit buy ~1.5% below last transaction price
+        use fixed loss-control margins:
+            LONG -> HOLD_IN caused by price dropping more than ~2% below last transaction price
+            SHORT -> HOLD_OUT casued by price rising more than ~2% above last transaction price
+    TODO Create framework for dry testing (save file with BTC holding amount?)
+*/
+
+
 public class AetherTrader
 {
     private String apiKey = "";
@@ -64,6 +77,7 @@ public class AetherTrader
     private long startTime;
     private TradingState tradingState = TradingState.HOLD_IN;
     private MarketState marketState = MarketState.UNKNOWN;
+    private double lastTransactionPrice;
     public static CircularList<MarketState> prevStates = new CircularList<MarketState>(5);
     private JSONObject internalError;
     static public SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM/yy hh:mm:ss");
@@ -168,6 +182,7 @@ public class AetherTrader
         JSONObject data = new JSONObject(sendPrivateRequest("/api/v2/sell/btceur/", params));
         if (!data.has("status"))
         {
+            lastTransactionPrice = price;
             return "Success. Order placed:\n" +  formatJSON(data);
         }
         else
@@ -193,6 +208,7 @@ public class AetherTrader
             JSONObject data = new JSONObject(sendPrivateRequest("/api/v2/buy/btceur/", params));
             if (!data.has("status"))
             {
+                lastTransactionPrice = price;
                 return "Success. Order placed:\n" +  formatJSON(data);
             }
             else
