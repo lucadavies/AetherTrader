@@ -58,6 +58,7 @@ public class AetherTrader
         VOLATILE_DW,
         /** An error caused a failure to measure market state. */
         UNKNOWN
+
     }
 
     private long startTime;
@@ -158,7 +159,7 @@ public class AetherTrader
         System.out.print("Amount (BTC): ");
         BigDecimal amt =  new BigDecimal(System.console().readLine());
         System.out.print("Price (EUR): ");
-        BigDecimal price = new BigDecimal(System.console().readLine());
+        double price = Double.parseDouble(System.console().readLine());
         String[] params = new String[]
         {
             "amount=" + amt,
@@ -180,13 +181,13 @@ public class AetherTrader
         System.out.print("Amount (BTC): ");
         BigDecimal amt = new BigDecimal(System.console().readLine());
         System.out.print("Price (EUR): ");
-        BigDecimal price = new BigDecimal(System.console().readLine());
+        double price = Double.parseDouble(System.console().readLine());
         String[] params = new String[]
         {
             "amount=" + amt,
             "price=" + price
         };
-        System.out.println(String.format("Place buy limit order for %.8f BTC at €%.2f (Value: €%.2f)", amt, price, amt.multiply(price)));
+        System.out.println(String.format("Place buy limit order for %.8f BTC at €%.2f (Value: €%.2f)", amt, price, amt.multiply(new BigDecimal(price))));
         if (userConfirm())
         {
             JSONObject data = new JSONObject(sendPrivateRequest("/api/v2/buy/btceur/", params));
@@ -237,7 +238,7 @@ public class AetherTrader
             {
                 float percentChange = calculatePercentChange();
                 marketState = getMarketState(percentChange);
-
+                prevStates.push(marketState);
                 System.out.println(String.format("[%s] %-4ss: %s (%+.2f%%)", dateFormat.format(new Date()), elapsedTime, marketState, percentChange));
             }
 
@@ -261,7 +262,6 @@ public class AetherTrader
         switch (tradingState)
         {
             case HOLD_IN:
-
                 break;
             case LONG:
                 break;
@@ -279,10 +279,10 @@ public class AetherTrader
 
     //#region Trading Utilities
 
-    private BigDecimal getBTCPrice()
+    public double getBTCPrice()
     {
         JSONObject data = new JSONObject(sendPublicRequest("/api/v2/ticker/btceur"));
-        return new BigDecimal(data.getString("last"));
+        return (data.getDouble("last"));
     }
 
     private JSONObject getOHLCData(int step, int limit)
@@ -308,7 +308,7 @@ public class AetherTrader
         }
     }
 
-    public float calculatePercentChange()
+    private float calculatePercentChange()
     {
         JSONObject data = getOHLCData(60, 60); //one minute interval, for one hour back
         if (data.has("error"))
@@ -405,7 +405,7 @@ public class AetherTrader
 
     // }
 
-    ////#endregion
+    //#endregion
 
     //#region Interface Utilities
 
@@ -710,6 +710,8 @@ public class AetherTrader
                 case 9:
                     System.out.println(trader.startAuto());
                     break;
+                case 10:
+                    System.out.println(trader.getBTCPrice());
                 case 0:
                     break menu;
                 default:
