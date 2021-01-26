@@ -19,7 +19,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 
-/*  TODO Write method to find current TradingState on startup (currently assumes HOLD_IN). Query balance and open orders.
+/*  TODO Improve getTradingState. Refuse to auto trade holding is split across BTC and EUR
     TODO ensure implementation of lastTransactionPrice
     TODO Write logic for decision making
         use fixed profit margins: 
@@ -45,11 +45,11 @@ public class AetherTrader
     {
         /** Value in market. Waiting for sell indications. */
         HOLD_IN,
-        /** Waiting to sell high. Limit sell placed. */
+        /** Value in market. Waiting to sell high (limit sell placed). */
         LONG,
         /** Value out of market. Waiting for buy indications. */
         HOLD_OUT,
-        /** Waiting to buy low. Limit buy placed. */
+        /** Value out of market. Waiting to buy low (limit buy placed). */
         SHORT
     }
 
@@ -450,10 +450,37 @@ public class AetherTrader
         }
     }
 
-    // private TradingState calculateTradingState()
-    // {
-    //     JSONObject balance = getBalance();
-    // }
+    private TradingState getTradingState()
+    {
+        JSONObject balance = getBalance();
+        BigDecimal eurAvail = balance.getBigDecimal("eur_available");
+        BigDecimal eurBal = balance.getBigDecimal("eur_balance");
+        BigDecimal btcAvail = balance.getBigDecimal("btc_available");
+        BigDecimal btcBal = balance.getBigDecimal("btc_balance");
+        
+        if (btcBal.compareTo(eurBal) == 1)  // More BTC held than EUR: HOLD_IN or LONG
+        {
+            if (btcBal.compareTo(btcAvail) == 1)    // More BTC in balance than available (open sell order present): LONG
+            {
+                return TradingState.LONG;
+            }
+            else                                    // More (equal) BTC avaiable as in balance (no open orders): HOLD_IN
+            {
+                return TradingState.HOLD_IN;
+            }
+        }
+        else                                // More EUR held than BTC
+        {
+            if (eurBal.compareTo(eurAvail) == 1)    // More EUR in balance than available (open buy order present): SHORT
+            {
+                return TradingState.SHORT;
+            }
+            else
+            {
+                return TradingState.HOLD_OUT;       // More (equal) EUR available as in balacne (no open orders): HOLD_OUT
+            }
+        }
+    }
 
     //#endregion
 
@@ -822,7 +849,8 @@ public class AetherTrader
                     System.out.println(trader.startAuto());
                     break;
                 case 10:
-                    System.out.println(trader.getBTCPrice());
+                    System.out.println(trader.getTradingState());
+                    break;
                 case 0:
                     break menu;
                 default:
