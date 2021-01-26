@@ -99,49 +99,47 @@ public class AetherTrader
 
     //#region Trading methods
 
-    public String getBTCData()
+    public JSONObject getBTCData()
     {
         JSONObject data = new JSONObject(sendPublicRequest("/api/v2/ticker/btceur"));
-        return formatJSON(data);
+        return data;
     }
 
-    public String getBalance()
+    /**
+     * Get balance of account attached to read-in API keys
+     * 
+     * @return a
+     */
+    public JSONObject getBalance()
     {
         JSONObject data = new JSONObject(sendPrivateRequest("/api/v2/balance/"));
         JSONObject btcData = new JSONObject(sendPublicRequest("/api/v2/ticker/btceur"));
         float value = Float.parseFloat(data.getString("eur_balance")) + (Float.parseFloat(data.getString("btc_balance")) * Float.parseFloat(btcData.getString("last")));
-        List<String> balKeys = Arrays.asList("eur_available", "eur_balance", "btc_balance","btc_available");
-        String result = "";
+        List<String> balKeys = Arrays.asList("eur_available", "eur_balance", "btc_balance","btc_available", "btceur_fee");
+        JSONObject result = new JSONObject();
         for (String k : balKeys)
         {
-            result += k + ": " + data.get(k) + "\n";
+            result.put(k, data.get(k));
         }
-        result += "VALUE: " + value;
+        result.put("value", value);
         return result;
     }
 
-    public String getOpenOrders()
+    public JSONArray getOpenOrders()
     {
         JSONArray data = new JSONArray(sendPrivateRequest("/api/v2/open_orders/all/"));
         
         if (data.length() != 0)
         {
-            String result = "";
-            JSONObject jOrder = null;
-            for (Object order : data)
-            {
-                jOrder =  (JSONObject)order;
-                result += jOrder.toString() + "\n";
-            }
-            return result;
+            return data;
         }
         else
         {
-            return "No orders to show.\n";
+            return null;
         }
     }
 
-    public String cancelOrder()
+    public JSONObject cancelOrder()
     {
         System.out.print("Order ID: ");
         String id = getUserInput();
@@ -149,26 +147,28 @@ public class AetherTrader
         {
             "id=" + id
         };
-
+        // TODO getOrder() to confirm via given order info
         if (userConfirm())
         {
             JSONObject data = new JSONObject(sendPrivateRequest("/api/v2/cancel_order/", params));
             if (!data.has("error"))
             {
-                return "Success. Order " +  data.get("id").toString() + " canceled";
+                data.put("status", "success");
+                return data;
             }
             else
             {
-                return "Error. Failed to cancel order.";
+                data.put("status", "failure");
+                return data;
             }
         }
         else
         {
-            return "Operation cancelled.";
+            return null;
         }        
     }
 
-    public String placeSellLimitOrder()
+    public JSONObject placeSellLimitOrder()
     {
         System.out.print("Amount (BTC): ");
         BigDecimal amt =  new BigDecimal(System.console().readLine());
@@ -179,19 +179,29 @@ public class AetherTrader
             "amount=" + amt,
             "price=" + price
         };
-        JSONObject data = new JSONObject(sendPrivateRequest("/api/v2/sell/btceur/", params));
-        if (!data.has("status"))
+        System.out.println(String.format("Place sell limit order for %.8f BTC at €%.2f (Value: €%.2f)", amt, price, amt.multiply(new BigDecimal(price))));
+        if (userConfirm())
         {
-            lastTransactionPrice = price;
-            return "Success. Order placed:\n" +  formatJSON(data);
+            JSONObject data = new JSONObject(sendPrivateRequest("/api/v2/sell/btceur/", params));
+            if (!data.has("status"))
+            {
+                lastTransactionPrice = price;
+                data.put("status", "success");
+                return data;
+            }
+            else
+            {
+                data.put("status", "failure");
+                return data;
+            }
         }
         else
         {
-            return "Error. Failed to place order:\n" + formatJSON(data);
+            return null;
         }
     }
 
-    public String placeBuyLimitOrder()
+    public JSONObject placeBuyLimitOrder()
     {
         System.out.print("Amount (BTC): ");
         BigDecimal amt = new BigDecimal(System.console().readLine());
@@ -209,16 +219,18 @@ public class AetherTrader
             if (!data.has("status"))
             {
                 lastTransactionPrice = price;
-                return "Success. Order placed:\n" +  formatJSON(data);
+                data.put("status", "success");
+                return data;
             }
             else
             {
-                return "Error. Failed to place order:\n" + formatJSON(data);
+                data.put("status", "failure");
+                return data;
             }
         }
         else
         {
-            return "Operation cancelled.";
+            return null;
         }
     }
 
@@ -416,9 +428,9 @@ public class AetherTrader
         }
     }
 
-  // private TradingState calculateTradingState()
+    // private TradingState calculateTradingState()
     // {
-
+    //     getBalance();
     // }
 
     //#endregion
@@ -480,12 +492,22 @@ public class AetherTrader
         }
     }
 
-    private String formatJSON(JSONObject obj)
+    private static String formatJSON(JSONObject obj)
     {
         String s = "";
         for (String field : obj.keySet())
         {
             s += String.format("%-15s: %s\n", field, obj.get(field));
+        }
+        return s;
+    }
+
+    private static String formatJSONArray(JSONArray obj)
+    {
+        String s = "";
+        for (Object o : obj)
+        {
+            s += formatJSON((JSONObject)o) + "\n";
         }
         return s;
     }
@@ -706,22 +728,73 @@ public class AetherTrader
             switch (choice)
             {
                 case 1:
-                    System.out.println(trader.getBTCData());
+                    System.out.println(formatJSON(trader.getBTCData()));
                     break;
                 case 2:
-                    System.out.println(trader.getBalance());
+                    System.out.println(formatJSON(trader.getBalance()));
                     break;
                 case 3:
-                    System.out.println(trader.getOpenOrders());
+                    JSONArray orders = trader.getOpenOrders();
+                    if (orders == null)
+                    {
+                        System.out.println("No orders to show.");
+                    }
+                    else
+                    {
+                        System.out.println("Open orders:");
+                        System.out.println(formatJSONArray(orders));
+                    }
                     break;
                 case 4:
-                    System.out.println(trader.cancelOrder());
+                    JSONObject cOrder = trader.cancelOrder();
+                    if (cOrder == null)
+                    {
+                        System.out.println("Operation cancelled.");
+                    }
+                    else if (cOrder.getString("status").equals("failure"))
+                    {
+                        System.out.println("WARNING: order not cancelled.");
+                        System.out.println(formatJSON(cOrder));
+                    }
+                    else
+                    {
+                        System.out.println("Success, order cancelled.");
+                        System.out.println(formatJSON(cOrder));
+                    }
                     break;
                 case 5:
-                    System.out.println(trader.placeSellLimitOrder());
+                    JSONObject sellOrder = trader.placeSellLimitOrder();
+                    if (sellOrder == null)
+                    {
+                        System.out.println("Operation cancelled.");
+                    }
+                    else if (sellOrder.getString("status").equals("failure"))
+                    {
+                        System.out.println("Error placing order.");
+                        System.out.println(formatJSON(sellOrder));
+                    }
+                    else
+                    {
+                        System.out.println("Success, sell limit order placed:");
+                        System.out.println(formatJSON(sellOrder));
+                    }
                     break;
                 case 6:
-                    System.out.println(trader.placeBuyLimitOrder());
+                    JSONObject buyOrder = trader.placeBuyLimitOrder();
+                    if (buyOrder == null)
+                    {
+                        System.out.println("Operation cancelled.");
+                    }
+                    else if (buyOrder.getString("status").equals("failure"))
+                    {
+                        System.out.println("Error placing order.");
+                        System.out.println(formatJSON(buyOrder));
+                    }
+                    else
+                    {
+                        System.out.println("Success, sell limit order placed:");
+                        System.out.println(formatJSON(buyOrder));
+                    }
                     break;
                 case 9:
                     System.out.println(trader.startAuto());
