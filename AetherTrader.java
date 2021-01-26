@@ -99,6 +99,10 @@ public class AetherTrader
 
     //#region Trading methods
 
+    /**
+     * Get data on BTC/EUR trading at this instant.
+     * @return JSONObject with keys "last", "high", "low", "vwap", "volume", "bid", "ask", "timestamp" and "open".
+     */
     public JSONObject getBTCData()
     {
         JSONObject data = new JSONObject(sendPublicRequest("/api/v2/ticker/btceur"));
@@ -106,16 +110,17 @@ public class AetherTrader
     }
 
     /**
-     * Get balance of account attached to read-in API keys
+     * Get balance of account. Gives BTC and EUR balance, available balance and BTC-EUR trading fee
+     * as a percentage of trade value.
      * 
-     * @return a
+     * @return JSONObject with keys "eur_available", "eur_balance", "btc_available", "btc_balance" and "btceur_fee".
      */
     public JSONObject getBalance()
     {
         JSONObject data = new JSONObject(sendPrivateRequest("/api/v2/balance/"));
         JSONObject btcData = new JSONObject(sendPublicRequest("/api/v2/ticker/btceur"));
         float value = Float.parseFloat(data.getString("eur_balance")) + (Float.parseFloat(data.getString("btc_balance")) * Float.parseFloat(btcData.getString("last")));
-        List<String> balKeys = Arrays.asList("eur_available", "eur_balance", "btc_balance","btc_available", "btceur_fee");
+        List<String> balKeys = Arrays.asList("eur_available", "eur_balance", "btc_available", "btc_balance", "btceur_fee");
         JSONObject result = new JSONObject();
         for (String k : balKeys)
         {
@@ -125,6 +130,11 @@ public class AetherTrader
         return result;
     }
 
+    /**
+     * Returns an array of open orders on account. Each represented as a JSONObject with keys:
+     * "datetime", "amount", "currecny_pair", "price", "id" and "type".
+     * @return JSONArray containing JSONObjects representing orders.
+     */
     public JSONArray getOpenOrders()
     {
         JSONArray data = new JSONArray(sendPrivateRequest("/api/v2/open_orders/all/"));
@@ -139,6 +149,10 @@ public class AetherTrader
         }
     }
 
+    /**
+     * Cancels order with ID prompted for at command line.
+     * @return JSONObject representing the cancelled order
+     */
     public JSONObject cancelOrder()
     {
         System.out.print("Order ID: ");
@@ -168,6 +182,10 @@ public class AetherTrader
         }        
     }
 
+    /**
+     * Place a limit sell order of amount and at price prompted for at command line.
+     * @return JSONObject repesenting the placed order.
+     */
     public JSONObject placeSellLimitOrder()
     {
         System.out.print("Amount (BTC): ");
@@ -201,6 +219,10 @@ public class AetherTrader
         }
     }
 
+    /**
+     * Place a limit buy order of amount and at price prompted for at command line.
+     * @return JSONObject repesenting the placed order.
+     */
     public JSONObject placeBuyLimitOrder()
     {
         System.out.print("Amount (BTC): ");
@@ -430,7 +452,7 @@ public class AetherTrader
 
     // private TradingState calculateTradingState()
     // {
-    //     getBalance();
+    //     JSONObject balance = getBalance();
     // }
 
     //#endregion
