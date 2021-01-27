@@ -525,7 +525,6 @@ public class AetherTrader
         System.out.println("4. Cancel order");
         System.out.println("5. Place sell limit order");
         System.out.println("6. Place buy limit order");
-        System.out.println("9. Start automatic trading programme");
         System.out.println("0. Quit");
     }
 
@@ -673,12 +672,6 @@ public class AetherTrader
                         System.out.println("Success, sell limit order placed:");
                         System.out.println(formatJSON(buyOrder));
                     }
-                    break;
-                case 9:
-                    System.out.println(trader.startAuto());
-                    break;
-                case 10:
-                    System.out.println(trader.getTradingState());
                     break;
                 case 0:
                     break menu;
