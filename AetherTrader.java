@@ -11,7 +11,7 @@ import java.util.List;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-/*  TODO ensure implementation of lastTransactionPrice
+/*  TODO ensure implementation of lastTransactionPrice (what happens on order cancel?)
     TODO Write logic for decision making
         use fixed profit margins: 
             HOLD_IN -> LONG caused by placing limit sell ~1.5% above last transaction price
@@ -156,8 +156,7 @@ public class AetherTrader
      */
     public JSONObject cancelOrder()
     {
-        System.out.print("Order ID: ");
-        String id = getUserInput();
+        String id = getUserInput("Order ID: ");
         String[] params = new String[]
         {
             "id=" + id
@@ -168,6 +167,7 @@ public class AetherTrader
             JSONObject data = new JSONObject(conn.sendPrivateRequest("/api/v2/cancel_order/", params));
             if (!data.has("error"))
             {
+                lastTransactionPrice = -1;
                 data.put("status", "success");
                 return data;
             }
@@ -189,10 +189,8 @@ public class AetherTrader
      */
     public JSONObject placeSellLimitOrder()
     {
-        System.out.print("Amount (BTC): ");
-        BigDecimal amt =  new BigDecimal(System.console().readLine());
-        System.out.print("Price (EUR): ");
-        double price = Double.parseDouble(System.console().readLine());
+        BigDecimal amt =  new BigDecimal(getUserInput("Amount (BTC): "));
+        double price = Double.parseDouble(getUserInput("Price (EUR): "));
         String[] params = new String[]
         {
             "amount=" + amt,
@@ -226,10 +224,8 @@ public class AetherTrader
      */
     public JSONObject placeBuyLimitOrder()
     {
-        System.out.print("Amount (BTC): ");
-        BigDecimal amt = new BigDecimal(System.console().readLine());
-        System.out.print("Price (EUR): ");
-        double price = Double.parseDouble(System.console().readLine());
+        BigDecimal amt =  new BigDecimal(getUserInput("Amount (BTC): "));
+        double price = Double.parseDouble(getUserInput("Price (EUR): "));
         String[] params = new String[]
         {
             "amount=" + amt,
@@ -534,7 +530,7 @@ public class AetherTrader
         int choice = 0;
         try
         {
-            choice = Integer.parseInt(getUserInput());
+            choice = Integer.parseInt(getUserInput("Action: "));
         }
         catch (Exception e)
         {
@@ -543,9 +539,10 @@ public class AetherTrader
         return choice;
     }
 
-    private String getUserInput()
+    private String getUserInput(String msg)
     {
         String input = "";
+        System.out.print(msg);
         try
         {
             input = System.console().readLine();
@@ -559,8 +556,7 @@ public class AetherTrader
 
     private boolean userConfirm()
     {
-        System.out.print("Confirm? [yes/no]: ");
-        String input = getUserInput();
+        String input = getUserInput("Confirm? [yes/no]: ");
         if (input.toLowerCase().equals("yes"))
         {
             return true;
