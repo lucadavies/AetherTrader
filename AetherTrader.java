@@ -1,23 +1,15 @@
-import org.apache.commons.codec.binary.Hex;
-import org.json.*;
-
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
-
 import java.io.IOError;
 import java.io.IOException;
 import java.math.BigDecimal;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
-import java.util.UUID;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 /*  TODO ensure implementation of lastTransactionPrice
     TODO Write logic for decision making
@@ -82,13 +74,14 @@ public class AetherTrader
         DOWN
     }
 
+    private BitstampAPIConnection conn = new BitstampAPIConnection("key", "keySecret");
     private long startTime;
     private TradingState tradingState = TradingState.HOLD_IN;
     private MarketState marketState = MarketState.UNKNOWN;
     private double lastTransactionPrice;
-    public static CircularList<MarketState> marketHistory = new CircularList<MarketState>(5);
+    private CircularList<MarketState> marketHistory = new CircularList<MarketState>(5);
     private JSONObject internalError;
-    static public SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM/yy hh:mm:ss");
+    private SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM/yy hh:mm:ss");
 
     public AetherTrader()
     {
@@ -113,7 +106,7 @@ public class AetherTrader
      */
     public JSONObject getBTCData()
     {
-        JSONObject data = new JSONObject(sendPublicRequest("/api/v2/ticker/btceur"));
+        JSONObject data = new JSONObject(conn.sendPublicRequest("/api/v2/ticker/btceur"));
         return data;
     }
 
@@ -125,8 +118,8 @@ public class AetherTrader
      */
     public JSONObject getBalance()
     {
-        JSONObject data = new JSONObject(sendPrivateRequest("/api/v2/balance/"));
-        JSONObject btcData = new JSONObject(sendPublicRequest("/api/v2/ticker/btceur"));
+        JSONObject data = new JSONObject(conn.sendPrivateRequest("/api/v2/balance/"));
+        JSONObject btcData = new JSONObject(conn.sendPublicRequest("/api/v2/ticker/btceur"));
         BigDecimal value = data.getBigDecimal("eur_balance").add(data.getBigDecimal("btc_balance").multiply(btcData.getBigDecimal("last")));
         List<String> balKeys = Arrays.asList("eur_available", "eur_balance", "btc_available", "btc_balance", "btceur_fee");
         JSONObject result = new JSONObject();
@@ -145,7 +138,7 @@ public class AetherTrader
      */
     public JSONArray getOpenOrders()
     {
-        JSONArray data = new JSONArray(sendPrivateRequest("/api/v2/open_orders/all/"));
+        JSONArray data = new JSONArray(conn.sendPrivateRequest("/api/v2/open_orders/all/"));
         
         if (data.length() != 0)
         {
@@ -172,7 +165,7 @@ public class AetherTrader
         // TODO getOrder() to confirm via given order info
         if (userConfirm())
         {
-            JSONObject data = new JSONObject(sendPrivateRequest("/api/v2/cancel_order/", params));
+            JSONObject data = new JSONObject(conn.sendPrivateRequest("/api/v2/cancel_order/", params));
             if (!data.has("error"))
             {
                 data.put("status", "success");
@@ -208,7 +201,7 @@ public class AetherTrader
         System.out.println(String.format("Place sell limit order for %.8f BTC at €%.2f (Value: €%.2f)", amt, price, amt.multiply(new BigDecimal(price))));
         if (userConfirm())
         {
-            JSONObject data = new JSONObject(sendPrivateRequest("/api/v2/sell/btceur/", params));
+            JSONObject data = new JSONObject(conn.sendPrivateRequest("/api/v2/sell/btceur/", params));
             if (!data.has("status"))
             {
                 lastTransactionPrice = price;
@@ -245,7 +238,7 @@ public class AetherTrader
         System.out.println(String.format("Place buy limit order for %.8f BTC at €%.2f (Value: €%.2f)", amt, price, amt.multiply(new BigDecimal(price))));
         if (userConfirm())
         {
-            JSONObject data = new JSONObject(sendPrivateRequest("/api/v2/buy/btceur/", params));
+            JSONObject data = new JSONObject(conn.sendPrivateRequest("/api/v2/buy/btceur/", params));
             if (!data.has("status"))
             {
                 lastTransactionPrice = price;
@@ -356,7 +349,7 @@ public class AetherTrader
 
     public double getBTCPrice()
     {
-        JSONObject data = new JSONObject(sendPublicRequest("/api/v2/ticker/btceur"));
+        JSONObject data = new JSONObject(conn.sendPublicRequest("/api/v2/ticker/btceur"));
         return (data.getDouble("last"));
     }
 
@@ -372,7 +365,7 @@ public class AetherTrader
             "step=" + step,
             "limit=" + limit
         };
-        JSONObject OhlcData = new JSONObject(sendPublicRequest("/api/v2/ohlc/btceur/", params));
+        JSONObject OhlcData = new JSONObject(conn.sendPublicRequest("/api/v2/ohlc/btceur/", params));
         if (!OhlcData.has("code"))
         {
             return OhlcData.getJSONObject("data");
@@ -596,207 +589,6 @@ public class AetherTrader
             s += formatJSON((JSONObject)o) + "\n";
         }
         return s;
-    }
-
-    //#endregion
-
-    //#region HTTP Requests
-
-    private String sendPublicRequest(String endPoint)
-    {
-        String urlHost = "www.bitstamp.net";
-        String urlPath = endPoint;
-
-        try
-        {
-            HttpClient client = HttpClient.newHttpClient();
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("https://" + urlHost + urlPath))
-                    .GET()
-                    .build();
-
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-
-            if (response.statusCode() != 200)
-            {
-                System.out.println("Error got response code " + response.statusCode());
-                throw new RuntimeException("Status code not 200");
-            }
-
-            String resp = response.body();
-            return resp;
-        } catch (Exception e)
-        {
-            throw new RuntimeException(e);
-        }
-    }
-
-    private String sendPublicRequest(String endPoint, String[] params)
-    {
-        String urlHost = "www.bitstamp.net";
-        String urlPath = endPoint;
-        urlPath += "?";
-        for (String param : params)
-        {
-            urlPath += "&" + param;
-        }
-
-        try
-        {
-            HttpClient client = HttpClient.newHttpClient();
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("https://" + urlHost + urlPath))
-                    .GET()
-                    .build();
-
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-
-            if (response.statusCode() != 200)
-            {
-                System.out.println("Error got response code " + response.statusCode());
-                throw new RuntimeException("Status code not 200");
-            }
-
-            String resp = response.body();
-            return resp;
-        } catch (Exception e)
-        {
-            throw new RuntimeException(e);
-        }
-    }
-
-    private String sendPrivateRequest(String endPoint)
-    {
-        String apiKey = String.format("%s %s", "BITSTAMP", this.apiKey);
-        String apiKeySecret = this.apiKeySecret;
-        String httpVerb = "POST";
-        String urlHost = "www.bitstamp.net";
-        String urlPath = endPoint;
-        String urlQuery = "";
-        String timestamp = String.valueOf(System.currentTimeMillis());
-        String nonce = UUID.randomUUID().toString();
-        String contentType = "application/x-www-form-urlencoded";
-        String version = "v2";
-        String payloadString = "offset=1";
-        String signature = apiKey + httpVerb + urlHost + urlPath + urlQuery + contentType + nonce + timestamp + version
-                + payloadString;
-
-        try
-        {
-            SecretKeySpec secretKey = new SecretKeySpec(apiKeySecret.getBytes(), "HmacSHA256");
-            Mac mac = Mac.getInstance("HmacSHA256");
-            mac.init(secretKey);
-            byte[] rawHmac = mac.doFinal(signature.getBytes());
-            signature = new String(Hex.encodeHex(rawHmac)).toUpperCase();
-
-            HttpClient client = HttpClient.newHttpClient();
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("https://" + urlHost + urlPath))
-                    .POST(HttpRequest.BodyPublishers.ofString(payloadString))
-                    .setHeader("X-Auth", apiKey)
-                    .setHeader("X-Auth-Signature", signature)
-                    .setHeader("X-Auth-Nonce", nonce)
-                    .setHeader("X-Auth-Timestamp", timestamp)
-                    .setHeader("X-Auth-Version", version)
-                    .setHeader("Content-Type", contentType)
-                    .build();
-
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-
-            if (response.statusCode() != 200)
-            {
-                System.out.println("Error got response code " + response.statusCode());
-                throw new RuntimeException("Status code not 200");
-            }
-
-            String serverSignature = response.headers().map().get("x-server-auth-signature").get(0);
-            String responseContentType = response.headers().map().get("Content-Type").get(0);
-            String stringToSign = nonce + timestamp + responseContentType + response.body();
-
-            mac.init(secretKey);
-            byte[] rawHmacServerCheck = mac.doFinal(stringToSign.getBytes());
-            String newSignature = new String(Hex.encodeHex(rawHmacServerCheck));
-
-            if (!newSignature.equals(serverSignature))
-            {
-                throw new RuntimeException("Signatures do not match");
-            }
-
-            return response.body();
-        } catch (Exception e)
-        {
-            throw new RuntimeException(e);
-        }
-    }
-
-    private String sendPrivateRequest(String endPoint, String[] params)
-    {
-        String apiKey = String.format("%s %s", "BITSTAMP", this.apiKey);
-        String apiKeySecret = this.apiKeySecret;
-        String httpVerb = "POST";
-        String urlHost = "www.bitstamp.net";
-        String urlPath = endPoint;
-        String urlQuery = "";
-        String timestamp = String.valueOf(System.currentTimeMillis());
-        String nonce = UUID.randomUUID().toString();
-        String contentType = "application/x-www-form-urlencoded";
-        String version = "v2";
-
-        String payloadString = "offset=1";
-        for (String param : params)
-        {
-            payloadString += "&" + param;
-        }
-
-        String signature = apiKey + httpVerb + urlHost + urlPath + urlQuery + contentType + nonce + timestamp + version
-                + payloadString;
-
-        try
-        {
-            SecretKeySpec secretKey = new SecretKeySpec(apiKeySecret.getBytes(), "HmacSHA256");
-            Mac mac = Mac.getInstance("HmacSHA256");
-            mac.init(secretKey);
-            byte[] rawHmac = mac.doFinal(signature.getBytes());
-            signature = new String(Hex.encodeHex(rawHmac)).toUpperCase();
-
-            HttpClient client = HttpClient.newHttpClient();
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("https://" + urlHost + urlPath))
-                    .POST(HttpRequest.BodyPublishers.ofString(payloadString))
-                    .setHeader("X-Auth", apiKey)
-                    .setHeader("X-Auth-Signature", signature)
-                    .setHeader("X-Auth-Nonce", nonce)
-                    .setHeader("X-Auth-Timestamp", timestamp)
-                    .setHeader("X-Auth-Version", version)
-                    .setHeader("Content-Type", contentType)
-                    .build();
-
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-
-            if (response.statusCode() != 200)
-            {
-                System.out.println("Error got response code " + response.statusCode());
-                throw new RuntimeException("Status code not 200");
-            }
-
-            String serverSignature = response.headers().map().get("x-server-auth-signature").get(0);
-            String responseContentType = response.headers().map().get("Content-Type").get(0);
-            String stringToSign = nonce + timestamp + responseContentType + response.body();
-
-            mac.init(secretKey);
-            byte[] rawHmacServerCheck = mac.doFinal(stringToSign.getBytes());
-            String newSignature = new String(Hex.encodeHex(rawHmacServerCheck));
-
-            if (!newSignature.equals(serverSignature))
-            {
-                throw new RuntimeException("Signatures do not match");
-            }
-
-            return response.body();
-        } catch (Exception e)
-        {
-            throw new RuntimeException(e);
-        }
     }
 
     //#endregion
