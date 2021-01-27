@@ -28,6 +28,7 @@ import java.util.UUID;
             LONG -> HOLD_IN caused by price dropping more than ~2% below last transaction price
             SHORT -> HOLD_OUT casued by price rising more than ~2% above last transaction price
     TODO Create framework for dry testing (save file with BTC holding amount?)
+    TODO Consider swapping timing logic to using Timer / TimerTask
 */
 
 
@@ -72,14 +73,20 @@ public class AetherTrader
         VOLATILE_DW,
         /** An error caused a failure to measure market state. */
         UNKNOWN
+    }
 
+    private enum Trend
+    {
+        UP,
+        FLAT,
+        DOWN
     }
 
     private long startTime;
     private TradingState tradingState = TradingState.HOLD_IN;
     private MarketState marketState = MarketState.UNKNOWN;
     private double lastTransactionPrice;
-    public static CircularList<MarketState> prevStates = new CircularList<MarketState>(5);
+    public static CircularList<MarketState> marketHistory = new CircularList<MarketState>(5);
     private JSONObject internalError;
     static public SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM/yy hh:mm:ss");
 
@@ -285,17 +292,18 @@ public class AetherTrader
             elapsedTime = (System.currentTimeMillis() - startTime) / 1000L;
             
             //get market state now
-            if (elapsedTime % 10L == 0)
+            if (elapsedTime % 60L == 0) // do this every 60 seconds
             {
                 float percentChange = calculatePercentChange();
                 marketState = getMarketState(percentChange);
-                prevStates.push(marketState);
+                marketHistory.push(marketState);
                 System.out.println(String.format("[%s] %-4ss: %s (%+.2f%%)", dateFormat.format(new Date()), elapsedTime, marketState, percentChange));
             }
 
-            //decide what to do
+            // TODO decide what to do
             TradingState nextState = decideNextState();
             
+            // TODO Do the thing
 
             //wait
             try
@@ -313,16 +321,32 @@ public class AetherTrader
         switch (tradingState)
         {
             case HOLD_IN:
+                if (predictMarket() == Trend.UP)
+                {
+                    // TODO place limit sell > 1% above lastTransaction price
+                }
                 break;
             case LONG:
+                // TODO check market isn't falling too much
                 break;
             case HOLD_OUT:
+                if (predictMarket() == Trend.DOWN)
+                {
+                    // TODO place limit buy > 1% below lastTransaction price
+                }
                 break;
             case SHORT:
+                // TODO check market isn't rising too much
                 break;
             default:
                 break;
         }
+        return TradingState.UNKNOWN;
+    }
+
+    private Trend predictMarket()
+    {
+        // TODO look at marketHistory
         return null;
     }
 
