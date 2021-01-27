@@ -19,8 +19,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 
-/*  TODO Improve getTradingState. Refuse to auto trade holding is split across BTC and EUR
-    TODO ensure implementation of lastTransactionPrice
+/*  TODO ensure implementation of lastTransactionPrice
     TODO Write logic for decision making
         use fixed profit margins: 
             HOLD_IN -> LONG caused by placing limit sell ~1.5% above last transaction price
@@ -50,7 +49,9 @@ public class AetherTrader
         /** Value out of market. Waiting for buy indications. */
         HOLD_OUT,
         /** Value out of market. Waiting to buy low (limit buy placed). */
-        SHORT
+        SHORT,
+        /** Value of account is split between BTC/EUR (ratio more even than 95%/5%). */
+        UNKNOWN
     }
 
     private enum MarketState
@@ -113,13 +114,13 @@ public class AetherTrader
      * Get balance of account. Gives BTC and EUR balance, available balance and BTC-EUR trading fee
      * as a percentage of trade value.
      * 
-     * @return JSONObject with keys "eur_available", "eur_balance", "btc_available", "btc_balance" and "btceur_fee".
+     * @return JSONObject with keys "eur_available", "eur_balance", "btc_available", "btc_balance", "btceur_fee", "value".
      */
     public JSONObject getBalance()
     {
         JSONObject data = new JSONObject(sendPrivateRequest("/api/v2/balance/"));
         JSONObject btcData = new JSONObject(sendPublicRequest("/api/v2/ticker/btceur"));
-        float value = Float.parseFloat(data.getString("eur_balance")) + (Float.parseFloat(data.getString("btc_balance")) * Float.parseFloat(btcData.getString("last")));
+        BigDecimal value = data.getBigDecimal("eur_balance").add(data.getBigDecimal("btc_balance").multiply(btcData.getBigDecimal("last")));
         List<String> balKeys = Arrays.asList("eur_available", "eur_balance", "btc_available", "btc_balance", "btceur_fee");
         JSONObject result = new JSONObject();
         for (String k : balKeys)
@@ -457,7 +458,19 @@ public class AetherTrader
         BigDecimal eurBal = balance.getBigDecimal("eur_balance");
         BigDecimal btcAvail = balance.getBigDecimal("btc_available");
         BigDecimal btcBal = balance.getBigDecimal("btc_balance");
-        
+        BigDecimal value = balance.getBigDecimal("value");
+        BigDecimal btcBalValue = btcBal.multiply(getBTCData().getBigDecimal("last"));
+
+        double percentInBTC = btcBalValue.divide(value).doubleValue();
+        double percentInEUR = eurBal.divide(value).doubleValue();
+
+        //If more than value is split in a ratio more even than 95%/5%
+        if (Math.abs(percentInBTC - percentInEUR) <= 0.9)
+        {
+            return TradingState.UNKNOWN;
+        }
+
+        //Assuming "correct" case (all funds fully IN or OUT)
         if (btcBal.compareTo(eurBal) == 1)  // More BTC held than EUR: HOLD_IN or LONG
         {
             if (btcBal.compareTo(btcAvail) == 1)    // More BTC in balance than available (open sell order present): LONG
