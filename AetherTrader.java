@@ -26,9 +26,6 @@ import org.json.JSONObject;
 
 public class AetherTrader
 {
-    private String apiKey = "";
-    private String apiKeySecret = "";
-
     /**
      * Represents possible status of BTC holding.
      * Expected progression: HOLD_IN -> LONG -> HOLD_OUT -> SHORT -> [repeat].
@@ -82,20 +79,12 @@ public class AetherTrader
     private CircularList<MarketState> marketHistory = new CircularList<MarketState>(5);
     private JSONObject internalError;
     private SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM/yy hh:mm:ss");
+    private final double PROFIT_MARGIN = 0.015;
 
     public AetherTrader()
     {
         internalError = new JSONObject();
         internalError.put("error", "Internal AetherTrader Error");
-        try
-        {
-            apiKey = Files.readString(Paths.get("key"));
-            apiKeySecret = Files.readString(Paths.get("keySecret"));
-        }
-        catch (IOException e)
-        {
-            throw new RuntimeException("Error reading API keys. Please check your key files and try again.", e);
-        }
     }
 
     //#region Trading methods
@@ -152,11 +141,10 @@ public class AetherTrader
 
     /**
      * Cancels order with ID prompted for at command line.
-     * @return JSONObject representing the cancelled order
+     * @return JSONObject representing the cancelled order.
      */
-    public JSONObject cancelOrder()
+    private JSONObject cancelOrder(String id)
     {
-        String id = getUserInput("Order ID: ");
         String[] params = new String[]
         {
             "id=" + id
@@ -184,13 +172,23 @@ public class AetherTrader
     }
 
     /**
-     * Place a limit sell order of amount and at price prompted for at command line.
+     * Cancels order with ID prompted for at command line.
+     * @return JSONObject representing the cancelled order
+     */
+    public JSONObject userCancelOrder()
+    {
+        String id = getUserInput("Order ID: ");
+        return cancelOrder(id);
+    }
+
+    /**
+     * Places a sell limit order.
+     * @param amt Amount to buy (BTC)
+     * @param price Price to buy at (EUR)
      * @return JSONObject repesenting the placed order.
      */
-    public JSONObject placeSellLimitOrder()
+    private JSONObject placeSellLimitOrder(BigDecimal amt, double price)
     {
-        BigDecimal amt =  new BigDecimal(getUserInput("Amount (BTC): "));
-        double price = Double.parseDouble(getUserInput("Price (EUR): "));
         String[] params = new String[]
         {
             "amount=" + amt,
@@ -219,13 +217,24 @@ public class AetherTrader
     }
 
     /**
-     * Place a limit buy order of amount and at price prompted for at command line.
+     * Place a limit sell order of amount/at price prompted for at command line.
      * @return JSONObject repesenting the placed order.
      */
-    public JSONObject placeBuyLimitOrder()
+    public JSONObject userSellLimitOrder()
     {
         BigDecimal amt =  new BigDecimal(getUserInput("Amount (BTC): "));
         double price = Double.parseDouble(getUserInput("Price (EUR): "));
+        return placeSellLimitOrder(amt, price);
+    }
+
+    /**
+     * Places a buy limit order.
+     * @param amt Amount to buy (BTC)
+     * @param price Price to buy at (EUR)
+     * @return JSONObject repesenting the placed order.
+     */
+    private JSONObject placeBuyLimitOrder(BigDecimal amt, double price)
+    {
         String[] params = new String[]
         {
             "amount=" + amt,
@@ -251,6 +260,17 @@ public class AetherTrader
         {
             return null;
         }
+    }
+
+    /**
+     * Place a limit buy order of amount/at price prompted for at command line.
+     * @return JSONObject repesenting the placed order.
+     */
+    public JSONObject userBuyLimitOrder()
+    {
+        BigDecimal amt =  new BigDecimal(getUserInput("Amount (BTC): "));
+        double price = Double.parseDouble(getUserInput("Price (EUR): "));
+        return placeBuyLimitOrder(amt, price);
     }
 
     //#endregion
@@ -290,9 +310,7 @@ public class AetherTrader
             }
 
             // TODO decide what to do
-            TradingState nextState = decideNextState();
-            
-            // TODO Do the thing
+            tradingState = doAction();
 
             //wait
             try
@@ -305,27 +323,44 @@ public class AetherTrader
         } while (elapsedTime < secondsToRun);
     }
 
-    private TradingState decideNextState()
+    /**
+     * Examines current trading and market state to decide next action. Executes next action if
+     * applicable and returns new trading state
+     * @return result trading state
+     */
+    private TradingState doAction()
     {
+        JSONObject btcData;
+        JSONObject bal;
         switch (tradingState)
         {
             case HOLD_IN:
                 if (predictMarket() == Trend.UP)
                 {
-                    // TODO place limit sell > 1% above lastTransaction price
+                    bal = getBalance();
+                    placeSellLimitOrder(bal.getBigDecimal("btc_available"), lastTransactionPrice * (1 + PROFIT_MARGIN));
                 }
                 break;
             case LONG:
-                // TODO check market isn't falling too much
+                btcData = getBTCData();
+                if (predictMarket() == Trend.DOWN || lastTransactionPrice - btcData.getDouble("last") > lastTransactionPrice * (1 - PROFIT_MARGIN))
+                {
+                    // TODO Plan of action in this scenario? Sell (safe) or assume rebound? (risky)
+                }
                 break;
             case HOLD_OUT:
                 if (predictMarket() == Trend.DOWN)
                 {
-                    // TODO place limit buy > 1% below lastTransaction price
+                    bal = getBalance();
+                    placeSellLimitOrder(bal.getBigDecimal("btc_available"), lastTransactionPrice * (1 - PROFIT_MARGIN));
                 }
                 break;
             case SHORT:
-                // TODO check market isn't rising too much
+                btcData = getBTCData();
+                if (predictMarket() == Trend.UP || btcData.getDouble("last") - lastTransactionPrice > lastTransactionPrice * (1 + PROFIT_MARGIN))
+                {
+                    // TODO Plan of action in this scenario? Retain value outside (safe), or jump back in anticipating rise? (risk)
+                }
                 break;
             default:
                 break;
@@ -620,7 +655,7 @@ public class AetherTrader
                     }
                     break;
                 case 4:
-                    JSONObject cOrder = trader.cancelOrder();
+                    JSONObject cOrder = trader.userCancelOrder();
                     if (cOrder == null)
                     {
                         System.out.println("Operation cancelled.");
@@ -637,7 +672,7 @@ public class AetherTrader
                     }
                     break;
                 case 5:
-                    JSONObject sellOrder = trader.placeSellLimitOrder();
+                    JSONObject sellOrder = trader.userSellLimitOrder();
                     if (sellOrder == null)
                     {
                         System.out.println("Operation cancelled.");
@@ -654,7 +689,7 @@ public class AetherTrader
                     }
                     break;
                 case 6:
-                    JSONObject buyOrder = trader.placeBuyLimitOrder();
+                    JSONObject buyOrder = trader.userBuyLimitOrder();
                     if (buyOrder == null)
                     {
                         System.out.println("Operation cancelled.");
