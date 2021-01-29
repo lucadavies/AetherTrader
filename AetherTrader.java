@@ -8,14 +8,10 @@ import java.util.List;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+//TODO TEST getOrder()!!!
+
 /*  TODO ensure implementation of lastTransactionPrice (what happens on order cancel?)
-    TODO Write logic for decision making
-        use fixed profit margins: 
-            HOLD_IN -> LONG caused by placing limit sell ~1.5% above last transaction price
-            HOLD_OUT -> SHORT caused by placing limit buy ~1.5% below last transaction price
-        use fixed loss-control margins:
-            LONG -> HOLD_IN caused by price dropping more than ~2% below last transaction price
-            SHORT -> HOLD_OUT casued by price rising more than ~2% above last transaction price
+    TODO Write logic for decision: predictMarket()
     TODO Create framework for dry testing (save file with BTC holding amount?)
     TODO Consider swapping timing logic to using Timer / TimerTask
 */
@@ -146,26 +142,24 @@ public class AetherTrader
         {
             "id=" + id
         };
-        // TODO getOrder() to confirm via given order info
-        if (userConfirm())
+        JSONObject order = getOrder(id);
+        JSONObject data = new JSONObject();
+        System.out.println(formatJSON(order));
+        if (!order.has("error"))
         {
-            JSONObject data = new JSONObject(conn.sendPrivateRequest("/api/v2/cancel_order/", params));
-            if (!data.has("error"))
+            if (userConfirm())
             {
-                lastTransactionPrice = -1;
-                data.put("status", "success");
-                return data;
+                data = new JSONObject(conn.sendPrivateRequest("/api/v2/cancel_order/", params));
+                if (!data.has("error"))
+                {
+                    lastTransactionPrice = -1;
+                    data.put("status", "success");
+                    return data;
+                }
             }
-            else
-            {
-                data.put("status", "failure");
-                return data;
-            }
-        }
-        else
-        {
-            return null;
-        }        
+        }  
+        data.put("status", "failure");
+        return data; 
     }
 
     /**
@@ -397,6 +391,30 @@ public class AetherTrader
         if (!OhlcData.has("code"))
         {
             return OhlcData.getJSONObject("data");
+        }
+        else
+        {
+            return internalError;
+        }
+    }
+
+    private JSONObject getOrder(String id)
+    {
+        JSONArray orders = getOpenOrders();
+        if (orders != null)
+        {
+            for (Object o : orders)
+            {
+                JSONObject order = (JSONObject)o;
+                if (((JSONObject)order).getString("id").equals(id))
+                {
+                    return order;
+                }
+            }
+            JSONObject err = new JSONObject();
+            err.put("status", "failure");
+            err.put("error", "No order with id " + id + ".");
+            return err;
         }
         else
         {
