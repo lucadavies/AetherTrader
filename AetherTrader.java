@@ -389,7 +389,7 @@ public class AetherTrader extends TimerTask
                 btcData = getBTCData();
                 if (predictMarket() == Trend.DOWN || lastTransactionPrice - btcData.getDouble("last") > lastTransactionPrice * (1 - PROFIT_MARGIN))
                 {
-                    // TODO Plan of action in this scenario? Sell (safe) or assume rebound? (risky)
+                    // TODO Plan of action in this scenario? Sell (safe, lossy) or assume rebound? (risky)
                 }
                 break;
             case HOLD_OUT:
@@ -403,7 +403,7 @@ public class AetherTrader extends TimerTask
                 btcData = getBTCData();
                 if (predictMarket() == Trend.UP || btcData.getDouble("last") - lastTransactionPrice > lastTransactionPrice * (1 + PROFIT_MARGIN))
                 {
-                    // TODO Plan of action in this scenario? Retain value outside (safe), or jump back in anticipating rise? (risk)
+                    // TODO Plan of action in this scenario? Retain value outside (safe, lossy), or jump back in anticipating rise? (risk)
                 }
                 break;
             default:
@@ -414,6 +414,20 @@ public class AetherTrader extends TimerTask
 
     private Trend predictMarket()
     {
+        if (marketHistory.contains(MarketState.UNKNOWN))
+        {
+            return Trend.FLAT;
+        }
+        
+        if (marketState == MarketState.UP || marketState == MarketState.UUP)
+        {
+            return Trend.UP;
+        }
+        else if (marketState == MarketState.DW || marketState == MarketState.DDW)
+        {
+            return Trend.DOWN;
+        }
+        
         // TODO look at marketHistory
         return null;
     }
