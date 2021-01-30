@@ -12,6 +12,7 @@ import javax.crypto.spec.SecretKeySpec;
 
 import org.apache.commons.codec.binary.Hex;
 
+// TODO Handle lack of keys to allow access to public methods only
 public class BitstampAPIConnection
 {
     private String defaultApiKeyPath = "key";
