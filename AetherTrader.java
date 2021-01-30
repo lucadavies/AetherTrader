@@ -4,19 +4,21 @@ import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
+import java.util.Timer;
+import java.util.TimerTask;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-/*  TODO Cancel order output issues
-    TODO ensure implementation of lastTransactionPrice (what happens on order cancel?)
+/*  TODO ensure implementation of lastTransactionPrice (what happens on order cancel?)
+
+    TODO Check calculatePercentagChange (data doesn't seem to match charts at all)
     TODO Write logic for decision: predictMarket()
     TODO Create framework for dry testing (save file with BTC holding amount?)
-    TODO Consider swapping timing logic to using Timer / TimerTask
 */
 
 
-public class AetherTrader
+public class AetherTrader extends TimerTask
 {
     /**
      * Represents possible status of BTC holding.
@@ -42,11 +44,11 @@ public class AetherTrader
         VOLATILE_UP,
         /** Up 2.5% - 5% */
         UUP,
-        /** Up 0.25% - 2.5% */
+        /** Up 0.20% - 2.5% */
         UP,
-        /** Between -0.25% and +0.25% */
+        /** Between -0.20% and +0.20% */
         FLAT,
-        /** Down  0.25% - 2.5% */
+        /** Down  0.20% - 2.5% */
         DW,
         /** Down 2.5% - 5% */
         DDW,
@@ -344,7 +346,7 @@ public class AetherTrader
         System.out.println("This will allow the program to begin trading automaticaly according to the in-built logic. Are you sure you want to continue?");
         if (userConfirm())
         {
-            run(0.5);
+            new Timer().scheduleAtFixedRate(this, 0, 60000);
             return "Bold move.\n";
         }
         else
@@ -353,36 +355,16 @@ public class AetherTrader
         }
     }
 
-    private void run(double hrsToRun)
-    {
-        double secondsToRun = hrsToRun * 60 * 60;
-        startTime = System.currentTimeMillis();
-        long elapsedTime = 0;
-        do
-        {
-            elapsedTime = (System.currentTimeMillis() - startTime) / 1000L;
-            
-            //get market state now
-            if (elapsedTime % 60L == 0) // do this every 60 seconds
-            {
-                float percentChange = calculatePercentChange();
-                marketState = getMarketState(percentChange);
-                marketHistory.push(marketState);
-                System.out.println(String.format("[%s] %-4ss: %s (%+.2f%%)", dateFormat.format(new Date()), elapsedTime, marketState, percentChange));
-            }
+    public void run()
+    {        
+        //get market state now
+        float percentChange = calculatePercentChange();
+        marketState = getMarketState(percentChange);
+        marketHistory.push(marketState);
+        System.out.println(String.format("[%s]: %s (%+.2f%%)", dateFormat.format(new Date()), marketState, percentChange));
 
-            // TODO decide what to do
-            tradingState = doAction();
-
-            //wait
-            try
-            {
-                Thread.sleep(500);
-            } catch (InterruptedException e)
-            {
-                System.out.println("Wait interrupted. Continuing.");
-            }
-        } while (elapsedTime < secondsToRun);
+        // TODO decide what to do
+        tradingState = doAction();
     }
 
     /**
@@ -517,8 +499,8 @@ public class AetherTrader
         float firstOpen = vals.getJSONObject(0).getFloat("open");
         float lastClose = vals.getJSONObject(vals.length() - 1).getFloat("close");
         float percentChange = (diff / firstOpen) * 100;
-        //System.out.println(String.format("BTC moved %+.2f%% in the last %d minutes.", percentChange, (1800 / 60) * 8));
-        //System.out.println(String.format("%.2f -> %.2f", firstOpen, lastClose));
+        // System.out.println(String.format("BTC moved %+.2f%% in the last %d minutes.", percentChange, 60));
+        // System.out.println(String.format("%.2f -> %.2f", firstOpen, lastClose));
         return percentChange;
     }
 
@@ -546,7 +528,7 @@ public class AetherTrader
 
     private MarketState getMarketState(float percent)
     {
-        if (percent < 0.25 && percent > -0.25) //too small to consider
+        if (percent < 0.20 && percent > -0.20) //too small to consider
         {
             return MarketState.FLAT;
         }
@@ -556,7 +538,7 @@ public class AetherTrader
             {
                 if (percent < 1.5)
                 {
-                    return MarketState.UP;  // UP 0.25 - 1.5%
+                    return MarketState.UP;  // UP 0.20 - 1.5%
                 }
                 else if (percent < 5)
                 {
@@ -571,7 +553,7 @@ public class AetherTrader
             {
                 if (percent > -1.5)
                 {
-                    return MarketState.DW;  // DOWN 0.25 - 1.5%
+                    return MarketState.DW;  // DOWN 0.20 - 1.5%
                 }
                 else if (percent > -5)
                 {
