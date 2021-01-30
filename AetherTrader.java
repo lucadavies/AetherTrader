@@ -134,14 +134,14 @@ public class AetherTrader
     public String userGetOpenOrders()
     {
         JSONArray orders = getOpenOrders();
-        String result;
+        String result = "\n";
         if (orders == null)
         {
-            result = "No orders to show.";
+            result += "No orders to show.\n";
         }
         else
         {
-            result = "Open orders:\n";
+            result += "Open orders:\n";
             result += formatJSONArray(orders);
         }
         
@@ -183,23 +183,24 @@ public class AetherTrader
      */
     public String userCancelOrder()
     {
+        System.out.println();
         String id = getUserInput("Order ID: ");
 
         JSONObject cOrder = cancelOrder(id);
         String result;
         if (cOrder == null)
         {
-            result = "Operation cancelled.";
+            result = "Operation cancelled.\n";
         }
         else if (cOrder.getString("status").equals("failure"))
         {
             result = "WARNING: order not cancelled.\n";
-            result += formatJSON(cOrder);
+            //result += formatJSON(cOrder);
         }
         else
         {
             result = "Success, order cancelled.\n";
-            result += formatJSON(cOrder);
+            //result += formatJSON(cOrder);
         }
 
         return result;        
@@ -246,6 +247,7 @@ public class AetherTrader
      */
     public String userSellLimitOrder()
     {
+        System.out.println();
         BigDecimal amt =  new BigDecimal(getUserInput("Amount (BTC): "));
         double price = Double.parseDouble(getUserInput("Price (EUR): "));
 
@@ -253,7 +255,7 @@ public class AetherTrader
         String result;
         if (sellOrder == null)
         {
-            result = "Operation cancelled.";
+            result = "Operation cancelled.\n";
         }
         else if (sellOrder.getString("status").equals("failure"))
         {
@@ -309,6 +311,7 @@ public class AetherTrader
      */
     public String userBuyLimitOrder()
     {
+        System.out.println();
         BigDecimal amt =  new BigDecimal(getUserInput("Amount (BTC): "));
         double price = Double.parseDouble(getUserInput("Price (EUR): "));
 
@@ -316,7 +319,7 @@ public class AetherTrader
         String result;
         if (buyOrder == null)
         {
-            result = "Operation cancelled.";
+            result = "Operation cancelled.\n";
         }
         else if (buyOrder.getString("status").equals("failure"))
         {
@@ -342,11 +345,11 @@ public class AetherTrader
         if (userConfirm())
         {
             run(0.5);
-            return "Bold move.";
+            return "Bold move.\n";
         }
         else
         {
-            return "Wise choice.";
+            return "Wise choice.\n";
         }
     }
 
@@ -675,6 +678,7 @@ public class AetherTrader
     private boolean userConfirm()
     {
         String input = getUserInput("Confirm? [yes/no]: ");
+        System.out.println();
         if (input.toLowerCase().equals("yes"))
         {
             return true;
@@ -687,7 +691,7 @@ public class AetherTrader
 
     private static String formatJSON(JSONObject obj)
     {
-        String s = "";
+        String s = "\n";
         for (String field : obj.keySet())
         {
             s += String.format("%-15s: %s\n", field, obj.get(field));
@@ -700,7 +704,7 @@ public class AetherTrader
         String s = "";
         for (Object o : obj)
         {
-            s += formatJSON((JSONObject)o) + "\n";
+            s += formatJSON((JSONObject)o);
         }
         return s;
     }
@@ -749,6 +753,7 @@ public class AetherTrader
                     System.out.println("Select a valid choice");
                     break;
             }
+            trader.getUserInput("Press enter to continue...");
         }
     }
 }
