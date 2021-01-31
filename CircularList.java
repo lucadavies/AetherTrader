@@ -6,6 +6,7 @@ import java.util.LinkedList;
  */
 public class CircularList<E> extends LinkedList<E>
 {
+    private static final long serialVersionUID = 131415L;
     private int maxSize;
 
     public CircularList(int maxSize)
