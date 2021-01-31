@@ -70,10 +70,12 @@ public class AetherTrader extends TimerTask
     private TradingState tradingState = TradingState.HOLD_IN;
     private MarketState marketState = MarketState.UNKNOWN;
     private double lastTransactionPrice;
+    private String lastOrderID;
     private CircularList<MarketState> marketHistory = new CircularList<MarketState>(5);
     private JSONObject internalError;
     private SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM/yy hh:mm:ss");
     private final double PROFIT_MARGIN = 0.015;
+    private TestWallet wallet = new TestWallet(new BigDecimal(0.00338066), new BigDecimal(0));
 
     public AetherTrader()
     {
@@ -159,22 +161,15 @@ public class AetherTrader extends TimerTask
         {
             "id=" + id
         };
-        JSONObject order = getOrder(id);
         JSONObject data = new JSONObject();
-        System.out.println(formatJSON(order));
-        if (!order.has("error"))
+        data = new JSONObject(conn.sendPrivateRequest("/api/v2/cancel_order/", params));
+        if (!data.has("error"))
         {
-            if (userConfirm())
-            {
-                data = new JSONObject(conn.sendPrivateRequest("/api/v2/cancel_order/", params));
-                if (!data.has("error"))
-                {
-                    lastTransactionPrice = -1;
-                    data.put("status", "success");
-                    return data;
-                }
-            }
-        }  
+            lastTransactionPrice = -1;
+            lastOrderID = "";
+            data.put("status", "success");
+            return data;
+        } 
         data.put("status", "failure");
         return data; 
     }
@@ -188,25 +183,44 @@ public class AetherTrader extends TimerTask
         System.out.println();
         String id = getUserInput("Order ID: ");
 
-        JSONObject cOrder = cancelOrder(id);
         String result;
-        if (cOrder == null)
+        JSONObject order = getOrder(id);
+        System.out.println(formatJSON(order));
+        if (!order.has("error"))
         {
-            result = "Operation cancelled.\n";
-        }
-        else if (cOrder.getString("status").equals("failure"))
-        {
-            result = "WARNING: order not cancelled.\n";
-            //result += formatJSON(cOrder);
+            if (userConfirm())
+            {
+                JSONObject cOrder = cancelOrder(id);
+                if (cOrder.getString("status").equals("failure"))
+                {
+                    result = "WARNING: order not cancelled.\n";
+                }
+                else
+                {
+                    result = "Success, order cancelled.\n";
+                }
+            }
+            else
+            {
+                result = "Operation cancelled.\n";
+            }
         }
         else
         {
-            result = "Success, order cancelled.\n";
-            //result += formatJSON(cOrder);
+            result = "No order with id " + id + ".";
         }
-
         return result;        
     }
+
+     private JSONObject placeSellInstantOrder(BigDecimal amt, double price)
+     {
+         return null;
+     }
+
+     private JSONObject placeBuyInstantOrder(BigDecimal amt, double price)
+     {
+         return null;
+     }
 
     /**
      * Places a sell limit order.
@@ -221,25 +235,18 @@ public class AetherTrader extends TimerTask
             "amount=" + amt,
             "price=" + price
         };
-        System.out.println(String.format("Place sell limit order for %.8f BTC at €%.2f (Value: €%.2f)", amt, price, amt.multiply(new BigDecimal(price))));
-        if (userConfirm())
+        JSONObject data = new JSONObject(conn.sendPrivateRequest("/api/v2/sell/btceur/", params));
+        if (!data.has("status"))
         {
-            JSONObject data = new JSONObject(conn.sendPrivateRequest("/api/v2/sell/btceur/", params));
-            if (!data.has("status"))
-            {
-                lastTransactionPrice = price;
-                data.put("status", "success");
-                return data;
-            }
-            else
-            {
-                data.put("status", "failure");
-                return data;
-            }
+            lastTransactionPrice = price;
+            lastOrderID = data.getString("id");
+            data.put("status", "success");
+            return data;
         }
         else
         {
-            return null;
+            data.put("status", "failure");
+            return data;
         }
     }
 
@@ -253,22 +260,26 @@ public class AetherTrader extends TimerTask
         BigDecimal amt =  new BigDecimal(getUserInput("Amount (BTC): "));
         double price = Double.parseDouble(getUserInput("Price (EUR): "));
 
-        JSONObject sellOrder = placeSellLimitOrder(amt, price);
         String result;
-        if (sellOrder == null)
+        System.out.println(String.format("Place sell limit order for %.8f BTC at €%.2f (Value: €%.2f)", amt, price, amt.multiply(new BigDecimal(price))));
+        if (userConfirm())
         {
-            result = "Operation cancelled.\n";
-        }
-        else if (sellOrder.getString("status").equals("failure"))
-        {
-            result = "Error placing order.\n";
-            result += formatJSON(sellOrder);
+            JSONObject sellOrder = placeSellLimitOrder(amt, price);
+            if (sellOrder.getString("status").equals("failure"))
+            {
+                result = "Error placing order.\n";
+                result += formatJSON(sellOrder);
+            }
+            else
+            {
+                result = "Success, sell limit order placed:\n";
+                result += formatJSON(sellOrder);
+            }
         }
         else
         {
-            result = "Success, sell limit order placed:\n";
-            result += formatJSON(sellOrder);
-        }
+            result = "Operation cancelled.\n";
+        }  
         return result;
     }
 
@@ -285,25 +296,18 @@ public class AetherTrader extends TimerTask
             "amount=" + amt,
             "price=" + price
         };
-        System.out.println(String.format("Place buy limit order for %.8f BTC at €%.2f (Value: €%.2f)", amt, price, amt.multiply(new BigDecimal(price))));
-        if (userConfirm())
+        JSONObject data = new JSONObject(conn.sendPrivateRequest("/api/v2/buy/btceur/", params));
+        if (!data.has("status"))
         {
-            JSONObject data = new JSONObject(conn.sendPrivateRequest("/api/v2/buy/btceur/", params));
-            if (!data.has("status"))
-            {
-                lastTransactionPrice = price;
-                data.put("status", "success");
-                return data;
-            }
-            else
-            {
-                data.put("status", "failure");
-                return data;
-            }
+            lastTransactionPrice = price;
+            lastOrderID = data.getString("id");
+            data.put("status", "success");
+            return data;
         }
         else
         {
-            return null;
+            data.put("status", "failure");
+            return data;
         }
     }
 
@@ -319,21 +323,25 @@ public class AetherTrader extends TimerTask
 
         JSONObject buyOrder = placeBuyLimitOrder(amt, price);
         String result;
-        if (buyOrder == null)
+
+        System.out.println(String.format("Place buy limit order for %.8f BTC at €%.2f (Value: €%.2f)", amt, price, amt.multiply(new BigDecimal(price))));
+        if (userConfirm())
         {
-            result = "Operation cancelled.\n";
-        }
-        else if (buyOrder.getString("status").equals("failure"))
-        {
-            result = "Error placing order.\n";
-            result += formatJSON(buyOrder);
+            if (buyOrder.getString("status").equals("failure"))
+            {
+                result = "Error placing order.\n";
+                result += formatJSON(buyOrder);
+            }
+            else
+            {
+                result = "Success, sell limit order placed:\n";
+                result += formatJSON(buyOrder);
+            }
         }
         else
         {
-            result = "Success, sell limit order placed:\n";
-            result += formatJSON(buyOrder);
+            result = "Operation cancelled.\n";
         }
-
         return result;
     }
 
@@ -389,7 +397,19 @@ public class AetherTrader extends TimerTask
                 btcData = getBTCData();
                 if (predictMarket() == Trend.DOWN || lastTransactionPrice - btcData.getDouble("last") > lastTransactionPrice * (1 - PROFIT_MARGIN))
                 {
-                    // TODO Plan of action in this scenario? Sell (safe, lossy) or assume rebound? (risky)
+                    // Trend is down when in a long position
+                    JSONObject cancelledOrder = cancelOrder(lastOrderID);
+                    if (cancelledOrder.has("error"))
+                    {
+                        System.out.println("WARNING: Unable to cancel limit sell order. Market falling while in a LONG position.");
+                        return TradingState.LONG;
+                    }
+                    else
+                    {
+                        //placeSellInstantOrder();
+                        return TradingState.HOLD_IN;
+                    }
+
                 }
                 break;
             case HOLD_OUT:
@@ -403,7 +423,17 @@ public class AetherTrader extends TimerTask
                 btcData = getBTCData();
                 if (predictMarket() == Trend.UP || btcData.getDouble("last") - lastTransactionPrice > lastTransactionPrice * (1 + PROFIT_MARGIN))
                 {
-                    // TODO Plan of action in this scenario? Retain value outside (safe, lossy), or jump back in anticipating rise? (risk)
+                    // Trend is up when in a short position
+                    JSONObject cancelledOrder = cancelOrder(lastOrderID);
+                    if (cancelledOrder.has("error"))
+                    {
+                        System.out.println("WARNING: Unable to cancel limit buy order. Market rising while in a SHORT position.");
+                        return TradingState.SHORT;
+                    }
+                    else
+                    {
+                        return TradingState.HOLD_OUT;
+                    }  
                 }
                 break;
             default:
