@@ -47,6 +47,49 @@ public class TestWallet extends TimerTask
         return balance;
     }
 
+    public JSONObject placeSellInstantOrder(BigDecimal amt)
+    {
+        if (!(amt.compareTo(btc_available) == 1))
+        {
+            JSONObject order = new JSONObject();
+            JSONObject btcData = getBTCData();
+            order.put("id", nextOrderId++);
+            order.put("amount", amt);
+            order.put("price", btcData.get("last"));
+            order.put("type", 1);
+            orders.add(order);
+            return order;
+        }
+        else
+        {
+            JSONObject failure = new JSONObject();
+            failure.put("status", "error");
+            failure.put("reason", "Not enough BTC available.");
+            return failure;
+        }
+    }
+
+    public JSONObject placeBuyInstantOrder(double amt)
+    {
+        if (!(eur_available.compareTo(new BigDecimal(amt)) == -1))
+        {
+            JSONObject order = new JSONObject();
+            JSONObject btcData = getBTCData();
+            order.put("id", nextOrderId++);
+            order.put("amount", amt);
+            order.put("price", btcData.get("last"));
+            order.put("type", 1);
+            return order;
+        }
+        else
+        {
+            JSONObject failure = new JSONObject();
+            failure.put("status", "error");
+            failure.put("reason", "Not enough EUR available.");
+            return failure;
+        }
+    }
+
     public JSONObject placeSellLimitOrder(BigDecimal amt, double price)
     {
         if (!(amt.compareTo(btc_available) == 1))
