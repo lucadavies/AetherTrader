@@ -47,7 +47,7 @@ public class TestWallet extends TimerTask
         return balance;
     }
 
-    public JSONObject placeLimitSell(BigDecimal amt, double price)
+    public JSONObject placeSellLimitOrder(BigDecimal amt, double price)
     {
         if (!(amt.compareTo(btc_available) == 1))
         {
@@ -68,7 +68,7 @@ public class TestWallet extends TimerTask
         }
     }
 
-    public JSONObject placeLimitBuy(BigDecimal amt, double price)
+    public JSONObject placeLimitBuyOrder(BigDecimal amt, double price)
     {
         if (!(amt.compareTo(btc_available) == 1))
         {

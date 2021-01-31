@@ -212,15 +212,105 @@ public class AetherTrader extends TimerTask
         return result;        
     }
 
-     private JSONObject placeSellInstantOrder(BigDecimal amt, double price)
-     {
-         return null;
-     }
+    private JSONObject placeSellInstantOrder(BigDecimal amt)
+    {
+        String[] params = new String[]
+        {
+            "amount=" + amt,
+        };
+        JSONObject data = new JSONObject(conn.sendPrivateRequest("/api/v2/sell/instant/btceur/", params));
+        if (!data.has("status"))
+        {
+            lastTransactionPrice = data.getDouble("price");
+            lastOrderID = data.getString("id");
+            data.put("status", "success");
+            return data;
+        }
+        else
+        {
+            data.put("status", "failure");
+            return data;
+        }
+    }
 
-     private JSONObject placeBuyInstantOrder(BigDecimal amt, double price)
-     {
-         return null;
-     }
+    public String userSellInstantOrder()
+    {
+        System.out.println();
+        BigDecimal amt =  new BigDecimal(getUserInput("Amount (BTC): "));
+
+        double price = getBTCData().getDouble("last");
+        String result;
+        System.out.println(String.format("Place sell instant order for %.8f BTC at ~€%.2f (Value: ~€%.2f)", amt, price, amt.multiply(new BigDecimal(price))));
+        if (userConfirm())
+        {
+            JSONObject sellOrder = placeSellInstantOrder(amt);
+            if (sellOrder.getString("status").equals("failure"))
+            {
+                result = "Error placing order.\n";
+                result += formatJSON(sellOrder);
+            }
+            else
+            {
+                result = "Success, sell limit order placed:\n";
+                result += formatJSON(sellOrder);
+            }
+        }
+        else
+        {
+            result = "Operation cancelled.\n";
+        }  
+        return result;
+    }
+
+    private JSONObject placeBuyInstantOrder(double amt)
+    {
+        String[] params = new String[]
+        {
+            "amount=" + amt,
+        };
+        JSONObject data = new JSONObject(conn.sendPrivateRequest("/api/v2/buy/instant/btceur/", params));
+        if (!data.has("status"))
+        {
+            lastTransactionPrice = data.getDouble("price");
+            lastOrderID = data.getString("id");
+            data.put("status", "success");
+            return data;
+        }
+        else
+        {
+            data.put("status", "failure");
+            return data;
+        }
+    }
+
+    public String userBuyInstantOrder()
+    {
+        System.out.println();
+        double amt = Double.parseDouble(getUserInput("Amount (EUR): "));
+
+        double price = getBTCData().getDouble("last");
+        String result;
+        System.out.println(String.format("Place buy instant order for %.8f BTC at ~€%.2f (Value: ~%.8fBTC)", amt, price, amt / price));
+        if (userConfirm())
+        {
+            JSONObject buyOrder = placeBuyInstantOrder(amt);
+            if (buyOrder.getString("status").equals("failure"))
+            {
+                result = "Error placing order.\n";
+                result += formatJSON(buyOrder);
+            }
+            else
+            {
+                result = "Success, sell limit order placed:\n";
+                result += formatJSON(buyOrder);
+            }
+        }
+        else
+        {
+            result = "Operation cancelled.\n";
+        }  
+        return result;
+    }
 
     /**
      * Places a sell limit order.
@@ -406,7 +496,8 @@ public class AetherTrader extends TimerTask
                     }
                     else
                     {
-                        //placeSellInstantOrder();
+                        bal = getBalance();
+                        placeSellInstantOrder(bal.getBigDecimal("btc_available"));
                         return TradingState.HOLD_IN;
                     }
 
@@ -771,7 +862,7 @@ public class AetherTrader extends TimerTask
                     System.out.println(trader.startAuto());
                     break;
                 case 10:
-                    System.out.println(trader.getTradingState());
+                    System.out.println(trader.userBuyInstantOrder());
                     break;
                 case 0:
                     break menu;
