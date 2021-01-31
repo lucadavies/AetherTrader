@@ -286,11 +286,11 @@ public class AetherTrader extends TimerTask
     public String userBuyInstantOrder()
     {
         System.out.println();
-        double amt = Double.parseDouble(getUserInput("Amount (EUR): "));
+        BigDecimal amt = new BigDecimal((getUserInput("Amount (EUR): ")));
 
         double price = getBTCPrice();
         String result;
-        System.out.println(String.format("Place buy instant order for %.8f BTC at ~€%.2f (Value: ~%.8fBTC)", amt, price, amt / price));
+        System.out.println(String.format("Place buy instant order for %.8f BTC at ~€%.2f (Value: ~%.8fBTC)", amt, price, amt.divide(new BigDecimal(price))));
         if (userConfirm())
         {
             JSONObject buyOrder = wallet.placeBuyInstantOrder(amt);
@@ -482,6 +482,8 @@ public class AetherTrader extends TimerTask
                 {
                     bal = wallet.getBalance();
                     wallet.placeSellLimitOrder(bal.getBigDecimal("btc_available"), lastTransactionPrice * (1 + PROFIT_MARGIN));
+                    System.out.println(String.format("[%s]: HOLD_IN -> LONG (Limit sell placed at %.2d)", dateFormat.format(new Date()), lastTransactionPrice * (1 + PROFIT_MARGIN)));
+                    return TradingState.LONG;
                 }
                 break;
             case LONG:
@@ -493,12 +495,14 @@ public class AetherTrader extends TimerTask
                     if (cancelledOrder.has("error"))
                     {
                         System.out.println("WARNING: Unable to cancel limit sell order. Market falling while in a LONG position.");
+                        System.out.println(String.format("[%s]: LONG -> LONG (Failed to cancel order)", dateFormat.format(new Date())));
                         return TradingState.LONG;
                     }
                     else
                     {
                         bal = wallet.getBalance();
-                        wallet.placeSellInstantOrder(bal.getBigDecimal("btc_available"));
+                        JSONObject o = wallet.placeSellInstantOrder(bal.getBigDecimal("btc_available"));
+                        System.out.println(String.format("[%s]: LONG -> HOLD_IN (Instant sell placed at €%.2f)", dateFormat.format(new Date()), o.getDouble("price")));
                         return TradingState.HOLD_IN;
                     }
 
@@ -508,7 +512,9 @@ public class AetherTrader extends TimerTask
                 if (predictMarket() == Trend.DOWN)
                 {
                     bal = wallet.getBalance();
-                    wallet.placeSellLimitOrder(bal.getBigDecimal("btc_available"), lastTransactionPrice * (1 - PROFIT_MARGIN));
+                    wallet.placeBuyLimitOrder(bal.getBigDecimal("btc_available"), lastTransactionPrice * (1 - PROFIT_MARGIN));
+                    System.out.println(String.format("[%s]: HOLD_OUT -> SHORT (Limit buy placed at €%.2d)", dateFormat.format(new Date()), lastTransactionPrice * (1 - PROFIT_MARGIN)));
+                    return TradingState.SHORT;
                 }
                 break;
             case SHORT:
@@ -520,10 +526,14 @@ public class AetherTrader extends TimerTask
                     if (cancelledOrder.has("error"))
                     {
                         System.out.println("WARNING: Unable to cancel limit buy order. Market rising while in a SHORT position.");
+                        System.out.println(String.format("[%s]: SHORT -> SHORT (Failed to cancel order)", dateFormat.format(new Date())));
                         return TradingState.SHORT;
                     }
                     else
                     {
+                        bal = wallet.getBalance();
+                        JSONObject o = wallet.placeBuyInstantOrder(bal.getBigDecimal("eur_available"));
+                        System.out.println(String.format("[%s]: SHORT -> HOLD_OUT (Instant buy placed at €%.2d)", dateFormat.format(new Date()), o.getDouble("price")));
                         return TradingState.HOLD_OUT;
                     }  
                 }

@@ -76,9 +76,9 @@ public class TestWallet extends TimerTask
         }
     }
 
-    public JSONObject placeBuyInstantOrder(double amt)
+    public JSONObject placeBuyInstantOrder(BigDecimal amt)
     {
-        if (!(eur_available.compareTo(new BigDecimal(amt)) == -1))
+        if (!(eur_available.compareTo(amt) == -1))
         {
             JSONObject order = new JSONObject();
             JSONObject btcData = getBTCData();
@@ -87,10 +87,10 @@ public class TestWallet extends TimerTask
             order.put("price", btcData.getBigDecimal("last"));
             order.put("type", 1);
 
-            btc_available.add(new BigDecimal(amt).divide(btcData.getBigDecimal("last")));
-            btc_balance.add(new BigDecimal(amt).divide(btcData.getBigDecimal("last")));
-            eur_available.subtract(new BigDecimal(amt));
-            eur_balance.subtract(new BigDecimal(amt));
+            btc_available.add(amt.divide(btcData.getBigDecimal("last")));
+            btc_balance.add(amt.divide(btcData.getBigDecimal("last")));
+            eur_available.subtract(amt);
+            eur_balance.subtract(amt);
 
             return order;
         }
