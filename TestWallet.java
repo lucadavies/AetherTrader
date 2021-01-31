@@ -2,6 +2,7 @@ import java.math.BigDecimal;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.Timer;
 import java.util.TimerTask;
 
 import org.json.JSONObject;
@@ -25,6 +26,7 @@ public class TestWallet extends TimerTask
         btc_balance = btc;
         eur_available = eur;
         eur_balance = eur;
+        new Timer().scheduleAtFixedRate(this, 0, 60000);
     }
 
     /**
@@ -55,9 +57,14 @@ public class TestWallet extends TimerTask
             JSONObject btcData = getBTCData();
             order.put("id", nextOrderId++);
             order.put("amount", amt);
-            order.put("price", btcData.get("last"));
+            order.put("price", btcData.getBigDecimal("last"));
             order.put("type", 1);
-            orders.add(order);
+
+            btc_available.subtract(amt);
+            btc_balance.subtract(amt);
+            eur_available.add(amt.multiply(btcData.getBigDecimal("last")));
+            eur_balance.add(amt.multiply(btcData.getBigDecimal("last")));
+
             return order;
         }
         else
@@ -77,8 +84,14 @@ public class TestWallet extends TimerTask
             JSONObject btcData = getBTCData();
             order.put("id", nextOrderId++);
             order.put("amount", amt);
-            order.put("price", btcData.get("last"));
+            order.put("price", btcData.getBigDecimal("last"));
             order.put("type", 1);
+
+            btc_available.add(new BigDecimal(amt).divide(btcData.getBigDecimal("last")));
+            btc_balance.add(new BigDecimal(amt).divide(btcData.getBigDecimal("last")));
+            eur_available.subtract(new BigDecimal(amt));
+            eur_balance.subtract(new BigDecimal(amt));
+
             return order;
         }
         else
@@ -100,6 +113,7 @@ public class TestWallet extends TimerTask
             order.put("price", price);
             order.put("type", 1);
             orders.add(order);
+            btc_available.subtract(amt);
             return order;
         }
         else
@@ -111,7 +125,7 @@ public class TestWallet extends TimerTask
         }
     }
 
-    public JSONObject placeLimitBuyOrder(BigDecimal amt, double price)
+    public JSONObject placeBuyLimitOrder(BigDecimal amt, double price)
     {
         if (!(amt.compareTo(btc_available) == 1))
         {
@@ -121,6 +135,7 @@ public class TestWallet extends TimerTask
             order.put("price", price);
             order.put("type", 0);
             orders.add(order);
+            eur_available = eur_available.subtract(order.getBigDecimal("amount").multiply(order.getBigDecimal("price")));
             return order;
         }
         else
@@ -139,6 +154,15 @@ public class TestWallet extends TimerTask
         {
             if (order.getString("id").equals("id"))
             {
+                if (order.getInt("type") == 0)
+                {
+                    eur_available = eur_available.add(order.getBigDecimal("amount").multiply(order.getBigDecimal("price")));
+                }
+                else if (order.getInt("type") == 1)
+                {
+                    btc_available = btc_available.add(order.getBigDecimal("amount"));
+                    
+                }
                 index = orders.indexOf(order);
                 break;
             }
@@ -168,7 +192,7 @@ public class TestWallet extends TimerTask
             {
                 if (data.getDouble("last") <= order.getDouble("price"))
                 {
-                    btc_available = btc_available.add(order.getBigDecimal("amount"));
+                    btc_balance = btc_balance.add(order.getBigDecimal("amount"));
                     indexes.add(orders.indexOf(order));
                 }
             }
@@ -176,7 +200,7 @@ public class TestWallet extends TimerTask
             {
                 if (data.getDouble("last") >= order.getDouble("price"))
                 {
-                    btc_available = btc_available.subtract(order.getBigDecimal("amount"));
+                    btc_balance = btc_balance.subtract(order.getBigDecimal("amount"));
                     indexes.add(orders.indexOf(order));
                 } 
             }
