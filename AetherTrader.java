@@ -66,14 +66,13 @@ public class AetherTrader extends TimerTask
     }
 
     private BitstampAPIConnection conn = new BitstampAPIConnection("key", "keySecret");
-    private long startTime;
     private TradingState tradingState = TradingState.HOLD_IN;
     private MarketState marketState = MarketState.UNKNOWN;
-    private double lastTransactionPrice;
-    private String lastOrderID;
+    private double priceAtLastTransaction = -1;
+    private long lastOrderID;
     private CircularList<MarketState> marketHistory = new CircularList<MarketState>(5);
     private JSONObject internalError;
-    private SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM/yy hh:mm:ss");
+    private SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM/yy HH:mm:ss");
     private final double PROFIT_MARGIN = 0.015;
     private TestWallet wallet = new TestWallet(new BigDecimal(0.00338066), new BigDecimal(0));
 
@@ -155,7 +154,7 @@ public class AetherTrader extends TimerTask
      * Cancels order with ID prompted for at command line.
      * @return JSONObject representing the cancelled order.
      */
-    private JSONObject cancelOrder(String id)
+    private JSONObject cancelOrder(long id)
     {
         String[] params = new String[]
         {
@@ -165,8 +164,8 @@ public class AetherTrader extends TimerTask
         data = new JSONObject(conn.sendPrivateRequest("/api/v2/cancel_order/", params));
         if (!data.has("error"))
         {
-            lastTransactionPrice = -1;
-            lastOrderID = "";
+            priceAtLastTransaction = -1;
+            lastOrderID = -1;
             data.put("status", "success");
             return data;
         } 
@@ -181,7 +180,7 @@ public class AetherTrader extends TimerTask
     public String userCancelOrder()
     {
         System.out.println();
-        String id = getUserInput("Order ID: ");
+        long id = Long.parseLong(getUserInput("Order ID: "));
 
         String result;
         JSONObject order = getOrder(id);
@@ -221,8 +220,8 @@ public class AetherTrader extends TimerTask
         JSONObject data = new JSONObject(conn.sendPrivateRequest("/api/v2/sell/instant/btceur/", params));
         if (!data.has("status"))
         {
-            lastTransactionPrice = data.getDouble("price");
-            lastOrderID = data.getString("id");
+            priceAtLastTransaction = data.getDouble("price");
+            lastOrderID = data.getLong("id");
             data.put("status", "success");
             return data;
         }
@@ -262,7 +261,7 @@ public class AetherTrader extends TimerTask
         return result;
     }
 
-    private JSONObject placeBuyInstantOrder(double amt)
+    private JSONObject placeBuyInstantOrder(BigDecimal amt)
     {
         String[] params = new String[]
         {
@@ -271,8 +270,8 @@ public class AetherTrader extends TimerTask
         JSONObject data = new JSONObject(conn.sendPrivateRequest("/api/v2/buy/instant/btceur/", params));
         if (!data.has("status"))
         {
-            lastTransactionPrice = data.getDouble("price");
-            lastOrderID = data.getString("id");
+            priceAtLastTransaction = data.getDouble("price");
+            lastOrderID = data.getLong("id");
             data.put("status", "success");
             return data;
         }
@@ -328,8 +327,8 @@ public class AetherTrader extends TimerTask
         JSONObject data = new JSONObject(conn.sendPrivateRequest("/api/v2/sell/btceur/", params));
         if (!data.has("status"))
         {
-            lastTransactionPrice = price;
-            lastOrderID = data.getString("id");
+            priceAtLastTransaction = getBTCPrice();
+            lastOrderID = data.getLong("id");
             data.put("status", "success");
             return data;
         }
@@ -389,8 +388,8 @@ public class AetherTrader extends TimerTask
         JSONObject data = new JSONObject(conn.sendPrivateRequest("/api/v2/buy/btceur/", params));
         if (!data.has("status"))
         {
-            lastTransactionPrice = price;
-            lastOrderID = data.getString("id");
+            priceAtLastTransaction = getBTCPrice();
+            lastOrderID = data.getLong("id");
             data.put("status", "success");
             return data;
         }
@@ -444,8 +443,9 @@ public class AetherTrader extends TimerTask
         System.out.println("This will allow the program to begin trading automaticaly according to the in-built logic. Are you sure you want to continue?");
         if (userConfirm())
         {
-            new Timer().scheduleAtFixedRate(this, 0, 60000);
             // TODO setup: get trading state, cancel current orders
+            tradingState = getTradingState();
+            new Timer().scheduleAtFixedRate(this, 0, 60000);
             return "Bold move.\n";
         }
         else
@@ -473,23 +473,29 @@ public class AetherTrader extends TimerTask
      */
     private TradingState doAction()
     {
-        JSONObject btcData;
+        JSONObject btcData = getBTCData();
         JSONObject bal;
+        if (priceAtLastTransaction == -1)
+        {
+            priceAtLastTransaction = btcData.getDouble("last");
+        }
+
         switch (tradingState)
         {
             case HOLD_IN:
                 if (predictMarket() == Trend.UP)
                 {
                     bal = wallet.getBalance();
-                    wallet.placeSellLimitOrder(bal.getBigDecimal("btc_available"), lastTransactionPrice * (1 + PROFIT_MARGIN));
-                    System.out.println(String.format("[%s]: HOLD_IN -> LONG (Limit sell placed at %.2d)", dateFormat.format(new Date()), lastTransactionPrice * (1 + PROFIT_MARGIN)));
+                    wallet.placeSellLimitOrder(bal.getBigDecimal("btc_available"), priceAtLastTransaction * (1 + PROFIT_MARGIN));
+                    System.out.println(String.format("[%s]: HOLD_IN -> LONG (Limit sell placed at %.2f)", dateFormat.format(new Date()), priceAtLastTransaction * (1 + PROFIT_MARGIN)));
                     return TradingState.LONG;
                 }
                 break;
             case LONG:
                 btcData = getBTCData();
-                if (predictMarket() == Trend.DOWN || lastTransactionPrice - btcData.getDouble("last") > lastTransactionPrice * (1 - PROFIT_MARGIN))
+                if (predictMarket() == Trend.DOWN || btcData.getDouble("last") > priceAtLastTransaction * (1 - PROFIT_MARGIN))
                 {
+                    // if last price is a whole margin below price when last order placed (wrong direction)
                     // Trend is down when in a long position
                     JSONObject cancelledOrder = wallet.cancelOrder(lastOrderID);
                     if (cancelledOrder.has("error"))
@@ -512,15 +518,16 @@ public class AetherTrader extends TimerTask
                 if (predictMarket() == Trend.DOWN)
                 {
                     bal = wallet.getBalance();
-                    wallet.placeBuyLimitOrder(bal.getBigDecimal("btc_available"), lastTransactionPrice * (1 - PROFIT_MARGIN));
-                    System.out.println(String.format("[%s]: HOLD_OUT -> SHORT (Limit buy placed at €%.2d)", dateFormat.format(new Date()), lastTransactionPrice * (1 - PROFIT_MARGIN)));
+                    wallet.placeBuyLimitOrder(bal.getBigDecimal("btc_available"), priceAtLastTransaction * (1 - PROFIT_MARGIN));
+                    System.out.println(String.format("[%s]: HOLD_OUT -> SHORT (Limit buy placed at €%.2d)", dateFormat.format(new Date()), priceAtLastTransaction * (1 - PROFIT_MARGIN)));
                     return TradingState.SHORT;
                 }
                 break;
             case SHORT:
                 btcData = getBTCData();
-                if (predictMarket() == Trend.UP || btcData.getDouble("last") - lastTransactionPrice > lastTransactionPrice * (1 + PROFIT_MARGIN))
+                if (predictMarket() == Trend.UP || btcData.getDouble("last") > priceAtLastTransaction * (1 + PROFIT_MARGIN))
                 {
+                    // if last price is a whole margin above price when last order placed (wrong direction)
                     // Trend is up when in a short position
                     JSONObject cancelledOrder = wallet.cancelOrder(lastOrderID);
                     if (cancelledOrder.has("error"))
@@ -597,7 +604,7 @@ public class AetherTrader extends TimerTask
         }
     }
 
-    private JSONObject getOrder(String id)
+    private JSONObject getOrder(long id)
     {
         JSONArray orders = getOpenOrders();
         if (orders != null)
@@ -605,7 +612,7 @@ public class AetherTrader extends TimerTask
             for (Object o : orders)
             {
                 JSONObject order = (JSONObject)o;
-                if (((JSONObject)order).getString("id").equals(id))
+                if (((JSONObject)order).getLong("id") == id)
                 {
                     return order;
                 }
@@ -855,7 +862,7 @@ public class AetherTrader extends TimerTask
                     System.out.println(formatJSON(trader.getBTCData()));
                     break;
                 case 2:
-                    //System.out.println(formatJSON(trader.getBalance()));
+                    System.out.println(formatJSON(trader.getBalance()));
                     break;
                 case 3:
                     System.out.println(trader.userGetOpenOrders());
@@ -871,7 +878,7 @@ public class AetherTrader extends TimerTask
                     break;
                 case 9:
                     System.out.println(trader.startAuto());
-                    break;
+                    break menu;
                 case 10:
                     break;
                 case 0:

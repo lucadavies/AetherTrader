@@ -7,6 +7,7 @@ import java.util.TimerTask;
 
 import org.json.JSONObject;
 
+// TODO simulate trading fee!!!!
 public class TestWallet extends TimerTask
 {
     BigDecimal btc_available;
@@ -15,7 +16,7 @@ public class TestWallet extends TimerTask
     BigDecimal eur_balance;
 
     ArrayList<JSONObject> orders = new ArrayList<JSONObject>();
-    int nextOrderId = 0;
+    long nextOrderId = 0;
 
     private SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM/yy hh:mm:ss");
     private BitstampAPIConnection conn = new BitstampAPIConnection("key", "keySecret");
@@ -46,6 +47,8 @@ public class TestWallet extends TimerTask
         balance.put("btc_balance", btc_balance);
         balance.put("eur_available", eur_available);
         balance.put("eur_balance", eur_balance);
+        BigDecimal value = balance.getBigDecimal("eur_balance").add(balance.getBigDecimal("btc_balance").multiply(getBTCData().getBigDecimal("last")));
+        balance.put("value", value);
         return balance;
     }
 
@@ -147,12 +150,12 @@ public class TestWallet extends TimerTask
         }
     }
 
-    public JSONObject cancelOrder(String id)
+    public JSONObject cancelOrder(long id)
     {
         int index = -1;
         for (JSONObject order : orders)
         {
-            if (order.getString("id").equals("id"))
+            if (order.getLong("id") == id)
             {
                 if (order.getInt("type") == 0)
                 {
@@ -207,7 +210,7 @@ public class TestWallet extends TimerTask
         }
         for (int i : indexes)
         {
-            System.out.println(String.format("[%s]: order %d executed at %d", dateFormat.format(new Date()), orders.get(i).get("id"), orders.get(i).get("price")));
+            System.out.println(String.format("[%s]: order %d executed at %.2f", dateFormat.format(new Date()), orders.get(i).getLong("id"), orders.get(i).getDouble("price")));
             orders.remove(i);
         }
     }
