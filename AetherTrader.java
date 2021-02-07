@@ -79,7 +79,9 @@ public class AetherTrader extends TimerTask
     private JSONObject internalError;
     private SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM/yy HH:mm:ss");
     private final double PROFIT_MARGIN = 0.015;
-    private TestWallet wallet = new TestWallet(new BigDecimal(0.00338066), new BigDecimal(0));
+    private TestWallet wallet;
+    private Timer autoTradingTimer;
+    private boolean isAutotrading = false;
 
     public AetherTrader()
     {
@@ -519,9 +521,14 @@ public class AetherTrader extends TimerTask
         System.out.println("This will allow the program to begin trading automaticaly according to the in-built logic. Are you sure you want to continue?");
         if (userConfirm())
         {
-            // TODO setup: get trading state, cancel current orders
+            wallet = new TestWallet(new BigDecimal(0.00338066), new BigDecimal(0));
+            isAutotrading = true;
+
+            // TODO setup: cancel current orders
             tradingState = getTradingState();
-            new Timer().scheduleAtFixedRate(this, 0, 60000);
+
+            autoTradingTimer = new Timer();
+            autoTradingTimer.scheduleAtFixedRate(this, 0, 60000);
             return "Bold move.\n";
         }
         else
@@ -548,6 +555,19 @@ public class AetherTrader extends TimerTask
     }
 
     /**
+     * Disposes of threads related to automatic trading so that the application can terminate.
+     */
+    public void close()
+    {
+        //wallet.close();
+        if (autoTradingTimer != null)
+        {
+            autoTradingTimer.cancel();
+            autoTradingTimer.purge();
+        }
+    }
+
+    /**
      * Examines current trading and market state to decide next action. Executes next action if
      * applicable and returns new trading state.
      * 
@@ -570,7 +590,7 @@ public class AetherTrader extends TimerTask
                 {
                     bal = wallet.getBalance();
                     wallet.placeSellLimitOrder(bal.getBigDecimal("btc_available"), priceAtLastTransaction * (1 + PROFIT_MARGIN));
-                    System.out.println(String.format("[%s]: HOLD_IN -> LONG (Limit sell placed at %.2f)", dateFormat.format(new Date()), priceAtLastTransaction * (1 + PROFIT_MARGIN)));
+                    System.out.println(String.format("[%s]: HOLD_IN -> LONG (Limit sell placed at €%.2f)", dateFormat.format(new Date()), priceAtLastTransaction * (1 + PROFIT_MARGIN)));
                     return TradingState.LONG;
                 }
                 break;
@@ -984,6 +1004,10 @@ public class AetherTrader extends TimerTask
         return s;
     }
 
+    private boolean getIsAutoTrading()
+    {
+        return isAutotrading;
+    }
     //#endregion
 
     public static void main(String[] args)
@@ -1029,5 +1053,20 @@ public class AetherTrader extends TimerTask
             }
             trader.getUserInput("Press enter to continue...");
         }
+        if (trader.getIsAutoTrading())
+        {
+            while (true)
+            {
+                try
+                {
+                    Thread.sleep(1000);
+                }
+                catch (InterruptedException e)
+                {
+                    System.out.println("Main thread interrupted while waiting. Continuing.");
+                }
+            }
+        }
+        trader.close();
     }
 }

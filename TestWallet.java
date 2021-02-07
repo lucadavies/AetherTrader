@@ -20,6 +20,7 @@ public class TestWallet extends TimerTask
 
     private SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM/yy hh:mm:ss");
     private BitstampAPIConnection conn = new BitstampAPIConnection("key", "keySecret");
+    private Timer orderProcessTimer;
 
     public TestWallet(BigDecimal btc, BigDecimal eur)
     {
@@ -27,7 +28,8 @@ public class TestWallet extends TimerTask
         btc_balance = btc;
         eur_available = eur;
         eur_balance = eur;
-        new Timer().scheduleAtFixedRate(this, 0, 60000);
+        orderProcessTimer = new Timer();
+        orderProcessTimer.scheduleAtFixedRate(this, 0, 60000);
     }
 
     /**
@@ -218,6 +220,15 @@ public class TestWallet extends TimerTask
         {
             System.out.println(String.format("[%s]: order %d executed at %.2f", dateFormat.format(new Date()), orders.get(i).getLong("id"), orders.get(i).getDouble("price")));
             orders.remove(i);
+        }
+    }
+
+    public void close()
+    {
+        if (orderProcessTimer != null)
+        {
+            orderProcessTimer.cancel();
+            orderProcessTimer.purge();
         }
     }
 }
