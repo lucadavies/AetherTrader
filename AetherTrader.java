@@ -17,7 +17,6 @@ import org.json.JSONObject;
     TODO Create framework for dry testing (save file with BTC holding amount?)
 */
 
-
 public class AetherTrader extends TimerTask
 {
     /**
@@ -80,7 +79,9 @@ public class AetherTrader extends TimerTask
     private JSONObject internalError;
     private SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM/yy HH:mm:ss");
     private final double PROFIT_MARGIN = 0.015;
-    private TestWallet wallet = new TestWallet(new BigDecimal(0.00338066), new BigDecimal(0));
+    private TestWallet wallet;
+    private Timer autoTradingTimer;
+    private boolean isAutotrading = false;
 
     public AetherTrader()
     {
@@ -514,12 +515,20 @@ public class AetherTrader extends TimerTask
      */
     public String startAuto()
     {
+        System.out.print("This feature is currently HEAVILY in development ");
+        System.out.print("and so will not trade on your actual and instead uses a test wallet. ");
+        System.out.println("Watch for future releases for a working trading programme.");
         System.out.println("This will allow the program to begin trading automaticaly according to the in-built logic. Are you sure you want to continue?");
         if (userConfirm())
         {
-            // TODO setup: get trading state, cancel current orders
+            wallet = new TestWallet(new BigDecimal(0.00338066), new BigDecimal(0));
+            isAutotrading = true;
+
+            // TODO setup: cancel current orders
             tradingState = getTradingState();
-            new Timer().scheduleAtFixedRate(this, 0, 60000);
+
+            autoTradingTimer = new Timer();
+            autoTradingTimer.scheduleAtFixedRate(this, 0, 60000);
             return "Bold move.\n";
         }
         else
@@ -546,6 +555,19 @@ public class AetherTrader extends TimerTask
     }
 
     /**
+     * Disposes of threads related to automatic trading so that the application can terminate.
+     */
+    public void close()
+    {
+        //wallet.close();
+        if (autoTradingTimer != null)
+        {
+            autoTradingTimer.cancel();
+            autoTradingTimer.purge();
+        }
+    }
+
+    /**
      * Examines current trading and market state to decide next action. Executes next action if
      * applicable and returns new trading state.
      * 
@@ -568,7 +590,7 @@ public class AetherTrader extends TimerTask
                 {
                     bal = wallet.getBalance();
                     wallet.placeSellLimitOrder(bal.getBigDecimal("btc_available"), priceAtLastTransaction * (1 + PROFIT_MARGIN));
-                    System.out.println(String.format("[%s]: HOLD_IN -> LONG (Limit sell placed at %.2f)", dateFormat.format(new Date()), priceAtLastTransaction * (1 + PROFIT_MARGIN)));
+                    System.out.println(String.format("[%s]: HOLD_IN -> LONG (Limit sell placed at €%.2f)", dateFormat.format(new Date()), priceAtLastTransaction * (1 + PROFIT_MARGIN)));
                     return TradingState.LONG;
                 }
                 break;
@@ -672,11 +694,11 @@ public class AetherTrader extends TimerTask
     }
 
     /**
-     * Gets a list of OHLC data.
+     * Gets a list of OHLC data. 
      * 
      * @param step Timeframe in seconds
      * @param limit Maximum number of results to return
-     * @return JSONObject cont
+     * @return JSONObject containing keys "status" and "data" (OHLC data)
      */
     private JSONObject getOHLCData(int step, int limit)
     {
@@ -687,17 +709,18 @@ public class AetherTrader extends TimerTask
         };
         JSONObject ohlcData = new JSONObject(conn.sendPublicRequest("/api/v2/ohlc/btceur/", params));
 
-        JSONObject resData = new JSONObject(ohlcData.getJSONObject("data"));
+        JSONObject resData = new JSONObject();
         if (!ohlcData.has("code"))
         {
             resData.put("status", "success");
-            return ohlcData.getJSONObject("data");
+            resData.put("data", ohlcData.getJSONObject("data").getJSONArray("ohlc"));
+            return resData;
         }
         else
         {
             resData.put("status", "failure");
             resData.put("error", ohlcData.get("errors"));
-            return internalError;
+            return resData;
         }
     }
 
@@ -747,7 +770,7 @@ public class AetherTrader extends TimerTask
         if (data.getString("status").equals("success"))
         {
             float diff = 0;
-            JSONArray vals = data.getJSONArray("ohlc");
+            JSONArray vals = data.getJSONArray("data");
 
             JSONObject v;
             float open;
@@ -981,6 +1004,10 @@ public class AetherTrader extends TimerTask
         return s;
     }
 
+    private boolean getIsAutoTrading()
+    {
+        return isAutotrading;
+    }
     //#endregion
 
     public static void main(String[] args)
@@ -1017,7 +1044,6 @@ public class AetherTrader extends TimerTask
                     System.out.println(trader.startAuto());
                     break menu;
                 case 10:
-                    trader.getOHLCData(60, 60);
                     break;
                 case 0:
                     break menu;
@@ -1027,5 +1053,20 @@ public class AetherTrader extends TimerTask
             }
             trader.getUserInput("Press enter to continue...");
         }
+        if (trader.getIsAutoTrading())
+        {
+            while (true)
+            {
+                try
+                {
+                    Thread.sleep(1000);
+                }
+                catch (InterruptedException e)
+                {
+                    System.out.println("Main thread interrupted while waiting. Continuing.");
+                }
+            }
+        }
+        trader.close();
     }
 }
