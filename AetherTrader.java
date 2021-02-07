@@ -38,6 +38,9 @@ public class AetherTrader extends TimerTask
         UNKNOWN
     }
 
+    /**
+     * Represents the movement of the market in the short-term.
+     */
     private enum MarketState
     {
         /** Up > 5% */
@@ -58,6 +61,9 @@ public class AetherTrader extends TimerTask
         UNKNOWN
     }
 
+    /**
+     * Represents the trend the market is currently following.
+     */
     private enum Trend
     {
         UP,
@@ -86,6 +92,7 @@ public class AetherTrader extends TimerTask
 
     /**
      * Get data on BTC/EUR trading at this instant.
+     * 
      * @return JSONObject with keys "last", "high", "low", "vwap", "volume", "bid", "ask", "timestamp" and "open".
      */
     public JSONObject getBTCData()
@@ -116,43 +123,69 @@ public class AetherTrader extends TimerTask
     }
 
     /**
-     * Returns an array of open orders on account. Each represented as a JSONObject with keys:
+     * Returns a JSONObject containing order data on account. Each represented as a JSONObject with keys:
      * "datetime", "amount", "currecny_pair", "price", "id" and "type".
-     * @return JSONArray containing JSONObjects representing orders.
+     * 
+     * @return JSONObject with keys "status" and "orders". Value of orders is a JSONArray containing JSONObjects
+     * representing orders. If an error is encountered, returns a JSONObject
+     * with keys "status" and "error".
      */
-    private JSONArray getOpenOrders()
+    private JSONObject getOpenOrders()
     {
-        JSONArray data = new JSONArray(conn.sendPrivateRequest("/api/v2/open_orders/all/"));
-        
-        if (data.length() != 0)
+        String data = conn.sendPrivateRequest("/api/v2/open_orders/all/");
+        if (data.charAt(0) == '[') //array returned: success
         {
-            return data;
+            JSONArray orders = new JSONArray(data);
+            JSONObject result = new JSONObject();
+            result.put("status", "success");
+            result.put("orders", orders);
+            return result;
         }
-        else
+        else //(error) object returned: failure
         {
-            return null;
-        }
+            JSONObject err = new JSONObject(data);
+            err.put("status", "failure");
+            err.put("error", err.getString("reason"));
+            err.remove("reason");
+            return err;
+        }   
     }
 
+    /**
+     * Gets a formatted representation of all open orders.
+     * 
+     * @return A formatted string
+     */
     public String userGetOpenOrders()
     {
-        JSONArray orders = getOpenOrders();
+        JSONObject orderData = getOpenOrders();
         String result = "\n";
-        if (orders == null)
+        if (orderData.getString("status").equals("success"))
         {
-            result += "No orders to show.\n";
+            if (orderData.getJSONArray("orders").length() == 0)
+            {
+                result += "No orders to show.\n";
+            }
+            else
+            {
+                result += "Open orders:\n";
+                result += formatJSONArray(orderData.getJSONArray("orders"));
+            }
         }
         else
         {
-            result += "Open orders:\n";
-            result += formatJSONArray(orders);
+            result += "Error:";
+            result += formatJSON(orderData);
         }
         
         return result;
     }
     /**
-     * Cancels order with ID prompted for at command line.
-     * @return JSONObject representing the cancelled order.
+     * Cancels an order.
+     * 
+     * @param id The order to cancel
+     * @return JSONObject representing the cancelled order. If an error is encountered, returns a JSONObject
+     * with keys "status" and "error".
      */
     private JSONObject cancelOrder(long id)
     {
@@ -175,7 +208,8 @@ public class AetherTrader extends TimerTask
 
     /**
      * Cancels order with ID prompted for at command line.
-     * @return JSONObject representing the cancelled order
+     * 
+     * @return Status message indictating the result of the cancel operation.
      */
     public String userCancelOrder()
     {
@@ -185,18 +219,18 @@ public class AetherTrader extends TimerTask
         String result;
         JSONObject order = getOrder(id);
         System.out.println(formatJSON(order));
-        if (!order.has("error"))
+        if (order.getString("status").equals("success"))
         {
             if (userConfirm())
             {
-                JSONObject cOrder = wallet.cancelOrder(id);
-                if (cOrder.getString("status").equals("failure"))
+                JSONObject cOrder = cancelOrder(id);
+                if (cOrder.getString("status").equals("success"))
                 {
-                    result = "WARNING: order not cancelled.\n";
+                    result = "Success, order cancelled.\n";
                 }
                 else
                 {
-                    result = "Success, order cancelled.\n";
+                    result = "WARNING: order not cancelled.\n";
                 }
             }
             else
@@ -211,6 +245,13 @@ public class AetherTrader extends TimerTask
         return result;        
     }
 
+    /**
+     * Places an instant sell order.
+     * 
+     * @param amt Amount of BTC to sell
+     * @return JSONObject reprenting the placed order. If an error is encountered, returns a JSONObject
+     * with keys "status" and "error".
+     */
     private JSONObject placeSellInstantOrder(BigDecimal amt)
     {
         String[] params = new String[]
@@ -228,10 +269,17 @@ public class AetherTrader extends TimerTask
         else
         {
             data.put("status", "failure");
+            data.put("error", data.getString("reason"));
+            data.remove("reason");
             return data;
         }
     }
 
+    /**
+     * Places an instant sell order of amount prompted for at command line.
+     * 
+     * @return Status message indicating the result of the order.
+     */
     public String userSellInstantOrder()
     {
         System.out.println();
@@ -242,17 +290,16 @@ public class AetherTrader extends TimerTask
         System.out.println(String.format("Place sell instant order for %.8f BTC at ~€%.2f (Value: ~€%.2f)", amt, price, amt.multiply(new BigDecimal(price))));
         if (userConfirm())
         {
-            JSONObject sellOrder = wallet.placeSellInstantOrder(amt);
-            if (sellOrder.getString("status").equals("failure"))
+            JSONObject sellOrder = placeSellInstantOrder(amt);
+            if (sellOrder.getString("status").equals("success"))
             {
-                result = "Error placing order.\n";
-                result += formatJSON(sellOrder);
+                result = "Success, sell limit order placed:\n";
             }
             else
             {
-                result = "Success, sell limit order placed:\n";
-                result += formatJSON(sellOrder);
+                result = "Error placing order.\n";  
             }
+            result += formatJSON(sellOrder);
         }
         else
         {
@@ -261,6 +308,13 @@ public class AetherTrader extends TimerTask
         return result;
     }
 
+    /**
+     * Places an instant buy order.
+     * 
+     * @param amt Amount of BTC to buy
+     * @return JSONObject reprenting the placed order. If an error is encountered, returns a JSONObject
+     * with keys "status" and "error".
+     */
     private JSONObject placeBuyInstantOrder(BigDecimal amt)
     {
         String[] params = new String[]
@@ -278,10 +332,17 @@ public class AetherTrader extends TimerTask
         else
         {
             data.put("status", "failure");
+            data.put("error", data.getString("reason"));
+            data.remove("reason");
             return data;
         }
     }
 
+    /**
+     * Places an instant sell order of amount prompted for at command line.
+     * 
+     * @return Status message indicating the result of the order.
+     */
     public String userBuyInstantOrder()
     {
         System.out.println();
@@ -292,15 +353,15 @@ public class AetherTrader extends TimerTask
         System.out.println(String.format("Place buy instant order for %.8f BTC at ~€%.2f (Value: ~%.8fBTC)", amt, price, amt.divide(new BigDecimal(price))));
         if (userConfirm())
         {
-            JSONObject buyOrder = wallet.placeBuyInstantOrder(amt);
-            if (buyOrder.getString("status").equals("failure"))
+            JSONObject buyOrder = placeBuyInstantOrder(amt);
+            if (buyOrder.getString("status").equals("success"))
             {
-                result = "Error placing order.\n";
+                result = "Success, sell limit order placed:\n";
                 result += formatJSON(buyOrder);
             }
             else
-            {
-                result = "Success, sell limit order placed:\n";
+            { 
+                result = "Error placing order.\n";
                 result += formatJSON(buyOrder);
             }
         }
@@ -313,6 +374,7 @@ public class AetherTrader extends TimerTask
 
     /**
      * Places a sell limit order.
+     * 
      * @param amt Amount to buy (BTC)
      * @param price Price to buy at (EUR)
      * @return JSONObject repesenting the placed order.
@@ -335,13 +397,16 @@ public class AetherTrader extends TimerTask
         else
         {
             data.put("status", "failure");
+            data.put("error", data.getString("reason"));
+            data.remove("reason");
             return data;
         }
     }
 
     /**
      * Place a limit sell order of amount/at price prompted for at command line.
-     * @return JSONObject repesenting the placed order.
+     * 
+     * @return Status message indicating the result of the order.
      */
     public String userSellLimitOrder()
     {
@@ -353,15 +418,15 @@ public class AetherTrader extends TimerTask
         System.out.println(String.format("Place sell limit order for %.8f BTC at €%.2f (Value: €%.2f)", amt, price, amt.multiply(new BigDecimal(price))));
         if (userConfirm())
         {
-            JSONObject sellOrder = wallet.placeSellLimitOrder(amt, price);
-            if (sellOrder.getString("status").equals("failure"))
+            JSONObject sellOrder = placeSellLimitOrder(amt, price);
+            if (sellOrder.getString("status").equals("success"))
             {
-                result = "Error placing order.\n";
+                result = "Success, sell limit order placed:\n";
                 result += formatJSON(sellOrder);
             }
             else
             {
-                result = "Success, sell limit order placed:\n";
+                result = "Error placing order.\n";
                 result += formatJSON(sellOrder);
             }
         }
@@ -374,6 +439,7 @@ public class AetherTrader extends TimerTask
 
     /**
      * Places a buy limit order.
+     * 
      * @param amt Amount to buy (BTC)
      * @param price Price to buy at (EUR)
      * @return JSONObject repesenting the placed order.
@@ -396,13 +462,16 @@ public class AetherTrader extends TimerTask
         else
         {
             data.put("status", "failure");
+            data.put("error", data.getString("reason"));
+            data.remove("reason");
             return data;
         }
     }
 
     /**
      * Place a limit buy order of amount/at price prompted for at command line.
-     * @return JSONObject repesenting the placed order.
+     * 
+     * @return Status message indicating the result of the order.
      */
     public String userBuyLimitOrder()
     {
@@ -410,20 +479,20 @@ public class AetherTrader extends TimerTask
         BigDecimal amt =  new BigDecimal(getUserInput("Amount (BTC): "));
         double price = Double.parseDouble(getUserInput("Price (EUR): "));
 
-        JSONObject buyOrder = wallet.placeBuyLimitOrder(amt, price);
+        JSONObject buyOrder = placeBuyLimitOrder(amt, price);
         String result;
 
         System.out.println(String.format("Place buy limit order for %.8f BTC at €%.2f (Value: €%.2f)", amt, price, amt.multiply(new BigDecimal(price))));
         if (userConfirm())
         {
-            if (buyOrder.getString("status").equals("failure"))
+            if (buyOrder.getString("status").equals("success"))
             {
-                result = "Error placing order.\n";
+                result = "Success, sell limit order placed:\n";
                 result += formatJSON(buyOrder);
             }
             else
             {
-                result = "Success, sell limit order placed:\n";
+                result = "Error placing order.\n";
                 result += formatJSON(buyOrder);
             }
         }
@@ -438,6 +507,11 @@ public class AetherTrader extends TimerTask
     
     //#region Auto Trading methods
 
+    /**
+     * Begins running thr automatic trading programme.
+     * 
+     * @return A comment reflecting on the user's decision to begin the programme or not. (WIP)
+     */
     public String startAuto()
     {
         System.out.println("This will allow the program to begin trading automaticaly according to the in-built logic. Are you sure you want to continue?");
@@ -457,7 +531,12 @@ public class AetherTrader extends TimerTask
     public void run()
     {        
         //get market state now
-        float percentChange = calculatePercentChange();
+        float percentChange = calculatePercentChange(60, 60);
+        if (percentChange == -999)
+        {
+            return;
+        }
+
         marketState = getMarketState(percentChange);
         marketHistory.push(marketState);
         System.out.println(String.format("[%s]: %s (%+.2f%%)", dateFormat.format(new Date()), marketState, percentChange));
@@ -468,8 +547,10 @@ public class AetherTrader extends TimerTask
 
     /**
      * Examines current trading and market state to decide next action. Executes next action if
-     * applicable and returns new trading state
-     * @return result trading state
+     * applicable and returns new trading state.
+     * 
+     * @return resultant trading state
+     * @see TradingState
      */
     private TradingState doAction()
     {
@@ -498,20 +579,19 @@ public class AetherTrader extends TimerTask
                     // if last price is a whole margin below price when last order placed (wrong direction)
                     // Trend is down when in a long position
                     JSONObject cancelledOrder = wallet.cancelOrder(lastOrderID);
-                    if (cancelledOrder.has("error"))
-                    {
-                        System.out.println("WARNING: Unable to cancel limit sell order. Market falling while in a LONG position.");
-                        System.out.println(String.format("[%s]: LONG -> LONG (Failed to cancel order)", dateFormat.format(new Date())));
-                        return TradingState.LONG;
-                    }
-                    else
+                    if (cancelledOrder.getString("status").equals("success"))
                     {
                         bal = wallet.getBalance();
                         JSONObject o = wallet.placeSellInstantOrder(bal.getBigDecimal("btc_available"));
                         System.out.println(String.format("[%s]: LONG -> HOLD_IN (Instant sell placed at €%.2f)", dateFormat.format(new Date()), o.getDouble("price")));
                         return TradingState.HOLD_IN;
                     }
-
+                    else
+                    {
+                        System.out.println("WARNING: Unable to cancel limit sell order. Market falling while in a LONG position.");
+                        System.out.println(String.format("[%s]: LONG -> LONG (Failed to cancel order)", dateFormat.format(new Date())));
+                        return TradingState.LONG;
+                    }
                 }
                 break;
             case HOLD_OUT:
@@ -530,18 +610,18 @@ public class AetherTrader extends TimerTask
                     // if last price is a whole margin above price when last order placed (wrong direction)
                     // Trend is up when in a short position
                     JSONObject cancelledOrder = wallet.cancelOrder(lastOrderID);
-                    if (cancelledOrder.has("error"))
-                    {
-                        System.out.println("WARNING: Unable to cancel limit buy order. Market rising while in a SHORT position.");
-                        System.out.println(String.format("[%s]: SHORT -> SHORT (Failed to cancel order)", dateFormat.format(new Date())));
-                        return TradingState.SHORT;
-                    }
-                    else
+                    if (cancelledOrder.getString("status").equals("success"))
                     {
                         bal = wallet.getBalance();
                         JSONObject o = wallet.placeBuyInstantOrder(bal.getBigDecimal("eur_available"));
                         System.out.println(String.format("[%s]: SHORT -> HOLD_OUT (Instant buy placed at €%.2d)", dateFormat.format(new Date()), o.getDouble("price")));
                         return TradingState.HOLD_OUT;
+                    }
+                    else
+                    {
+                        System.out.println("WARNING: Unable to cancel limit buy order. Market rising while in a SHORT position.");
+                        System.out.println(String.format("[%s]: SHORT -> SHORT (Failed to cancel order)", dateFormat.format(new Date())));
+                        return TradingState.SHORT;
                     }  
                 }
                 break;
@@ -551,6 +631,11 @@ public class AetherTrader extends TimerTask
         return TradingState.UNKNOWN;
     }
 
+    /**
+     * Predicts the likely movement of the market based upon previous data. (HEAVYILY WIP).
+     * @return The <code>Trend</code> the market will follow 
+     * @see Trend
+     */
     private Trend predictMarket()
     {
         if (marketHistory.contains(MarketState.UNKNOWN))
@@ -575,40 +660,60 @@ public class AetherTrader extends TimerTask
 
     //#region Trading Utilities
 
+    /**
+     * Gets the current price of BTC in EUR.
+     * 
+     * @return the price
+     */
     public double getBTCPrice()
     {
         JSONObject data = new JSONObject(conn.sendPublicRequest("/api/v2/ticker/btceur"));
         return (data.getDouble("last"));
     }
 
+    /**
+     * Gets a list of OHLC data.
+     * 
+     * @param step Timeframe in seconds
+     * @param limit Maximum number of results to return
+     * @return JSONObject cont
+     */
     private JSONObject getOHLCData(int step, int limit)
     {
-        if (!isValidOHLCStep(step) || limit > 1000 || limit < 1)
-        {
-            return internalError;
-        }
-
         String[] params = new String[]
         {
             "step=" + step,
             "limit=" + limit
         };
-        JSONObject OhlcData = new JSONObject(conn.sendPublicRequest("/api/v2/ohlc/btceur/", params));
-        if (!OhlcData.has("code"))
+        JSONObject ohlcData = new JSONObject(conn.sendPublicRequest("/api/v2/ohlc/btceur/", params));
+
+        JSONObject resData = new JSONObject(ohlcData.getJSONObject("data"));
+        if (!ohlcData.has("code"))
         {
-            return OhlcData.getJSONObject("data");
+            resData.put("status", "success");
+            return ohlcData.getJSONObject("data");
         }
         else
         {
+            resData.put("status", "failure");
+            resData.put("error", ohlcData.get("errors"));
             return internalError;
         }
     }
 
+    /**
+     * Get details of an order.
+     * 
+     * @param id The ID of the order
+     * @return JSONObject containing order details. Key "status" is "success" if order retrieved successfully, else it
+     * is "failure".
+     */
     private JSONObject getOrder(long id)
     {
-        JSONArray orders = getOpenOrders();
-        if (orders != null)
+        JSONObject orderData = getOpenOrders();
+        if (orderData.getString("status").equals("success"))
         {
+            JSONArray orders = orderData.getJSONArray("orders");
             for (Object o : orders)
             {
                 JSONObject order = (JSONObject)o;
@@ -624,61 +729,57 @@ public class AetherTrader extends TimerTask
         }
         else
         {
-            return internalError;
-        }
-    }
-
-    private float calculatePercentChange()
-    {
-        JSONObject data = getOHLCData(60, 60); //one minute interval, for one hour back
-        if (data.has("error"))
-        {
-            //throw new Exception();
-        }
-        float diff = 0;
-        JSONArray vals = data.getJSONArray("ohlc");
-
-        JSONObject v;
-        float open;
-        float close;
-        for (int i = 0; i < vals.length(); i++)
-        {
-            v = vals.getJSONObject(i);
-            open = v.getFloat("open");
-            close = v.getFloat("close");
-            diff += close - open;
+            return orderData;
         }
         
-        float firstOpen = vals.getJSONObject(0).getFloat("open");
-        float lastClose = vals.getJSONObject(vals.length() - 1).getFloat("close");
-        float percentChange = (diff / firstOpen) * 100;
-        // System.out.println(String.format("BTC moved %+.2f%% in the last %d minutes.", percentChange, 60));
-        // System.out.println(String.format("%.2f -> %.2f", firstOpen, lastClose));
-        return percentChange;
     }
 
-    private boolean isValidOHLCStep(int step)
+    /**
+     * Calculates the percentage difference in price over a given time period.
+     * 
+     * @param timeStep The granularity of calculations in seconds
+     * @param duration The number of <code>timeSteps</code> back to include in calculation
+     * @return The percentage change, postive if up, negative if down
+     */
+    private float calculatePercentChange(int timeStep, int duration)
     {
-        switch (step)
+        JSONObject data = getOHLCData(timeStep, duration); //one minute interval, for one hour back
+        if (data.getString("status").equals("success"))
         {
-            case 60:
-            case 180:
-            case 300:
-            case 900:
-            case 1800:
-            case 3600:
-            case 7200:
-            case 14400:
-            case 21600:
-            case 43200:
-            case 86400:
-            case 259200:
-                return true;
-            default:
-                return false;
+            float diff = 0;
+            JSONArray vals = data.getJSONArray("ohlc");
+
+            JSONObject v;
+            float open;
+            float close;
+            for (int i = 0; i < vals.length(); i++)
+            {
+                v = vals.getJSONObject(i);
+                open = v.getFloat("open");
+                close = v.getFloat("close");
+                diff += close - open;
+            }
+            
+            float firstOpen = vals.getJSONObject(0).getFloat("open");
+            float lastClose = vals.getJSONObject(vals.length() - 1).getFloat("close");
+            float percentChange = (diff / firstOpen) * 100;
+            // System.out.println(String.format("BTC moved %+.2f%% in the last %d minutes.", percentChange, 60));
+            // System.out.println(String.format("%.2f -> %.2f", firstOpen, lastClose));
+            return percentChange;
+        }
+        else
+        {
+            return -999;
         }
     }
 
+    /**
+     * Gets the current market state from the percentage change
+     * 
+     * @param percent Change in market
+     * @return The observed <code>MarketState</code>
+     * @see MarketState
+     */
     private MarketState getMarketState(float percent)
     {
         if (percent < 0.20 && percent > -0.20) //too small to consider
@@ -720,6 +821,11 @@ public class AetherTrader extends TimerTask
         }
     }
 
+    /**
+     * Gets the current trading state using the balances of BTC and EUR
+     * @return The <code>TradingState</code> of this account
+     * @see TradingState
+     */
     private TradingState getTradingState()
     {
         JSONObject balance = wallet.getBalance();
@@ -768,6 +874,9 @@ public class AetherTrader extends TimerTask
 
     //#region Interface Utilities
 
+    /**
+     * Displays the menu at command line.
+     */
     public void showMenu()
     {
         System.out.println("----- MENU -----");
@@ -781,6 +890,11 @@ public class AetherTrader extends TimerTask
         System.out.println("0. Quit");
     }
 
+    /**
+     * Gets the user's menu choice.
+     * 
+     * @return The user's choice
+     */
     public int getChoice()
     {
         int choice = 0;
@@ -795,6 +909,12 @@ public class AetherTrader extends TimerTask
         return choice;
     }
 
+    /**
+     * Gets user input from command line.
+     * 
+     * @param msg Message to prompt the user with
+     * @return The user's input
+     */
     private String getUserInput(String msg)
     {
         String input = "";
@@ -810,6 +930,11 @@ public class AetherTrader extends TimerTask
         return input;
     }
 
+    /**
+     * Prompts the user to confirm with a yes/no prompt.
+     * 
+     * @return True is user entered "yes", otherwise False
+     */
     private boolean userConfirm()
     {
         String input = getUserInput("Confirm? [yes/no]: ");
@@ -824,6 +949,12 @@ public class AetherTrader extends TimerTask
         }
     }
 
+    /**
+     * Formats a JSONObject for printing to command line
+     * 
+     * @param obj JSONObject to format
+     * @return Formatted string
+     */
     private static String formatJSON(JSONObject obj)
     {
         String s = "\n";
@@ -834,6 +965,12 @@ public class AetherTrader extends TimerTask
         return s;
     }
 
+    /**
+     * Formats a JSONArray for printing to command line
+     * 
+     * @param obj JSONArray to format
+     * @return Formatted string
+     */
     private static String formatJSONArray(JSONArray obj)
     {
         String s = "";
@@ -880,6 +1017,7 @@ public class AetherTrader extends TimerTask
                     System.out.println(trader.startAuto());
                     break menu;
                 case 10:
+                    trader.getOHLCData(60, 60);
                     break;
                 case 0:
                     break menu;

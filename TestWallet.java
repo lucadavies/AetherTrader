@@ -62,6 +62,7 @@ public class TestWallet extends TimerTask
             order.put("amount", amt);
             order.put("price", btcData.getBigDecimal("last"));
             order.put("type", 1);
+            order.put("status", "success");
 
             btc_available.subtract(amt);
             btc_balance.subtract(amt);
@@ -73,7 +74,7 @@ public class TestWallet extends TimerTask
         else
         {
             JSONObject failure = new JSONObject();
-            failure.put("status", "error");
+            failure.put("status", "failure");
             failure.put("reason", "Not enough BTC available.");
             return failure;
         }
@@ -89,6 +90,7 @@ public class TestWallet extends TimerTask
             order.put("amount", amt);
             order.put("price", btcData.getBigDecimal("last"));
             order.put("type", 1);
+            order.put("status", "success");
 
             btc_available.add(amt.divide(btcData.getBigDecimal("last")));
             btc_balance.add(amt.divide(btcData.getBigDecimal("last")));
@@ -100,8 +102,8 @@ public class TestWallet extends TimerTask
         else
         {
             JSONObject failure = new JSONObject();
-            failure.put("status", "error");
-            failure.put("reason", "Not enough EUR available.");
+            failure.put("status", "failure");
+            failure.put("error", "Not enough EUR available.");
             return failure;
         }
     }
@@ -115,6 +117,7 @@ public class TestWallet extends TimerTask
             order.put("amount", amt);
             order.put("price", price);
             order.put("type", 1);
+            order.put("status", "success");
             orders.add(order);
             btc_available.subtract(amt);
             return order;
@@ -122,7 +125,7 @@ public class TestWallet extends TimerTask
         else
         {
             JSONObject failure = new JSONObject();
-            failure.put("status", "error");
+            failure.put("status", "failure");
             failure.put("reason", "Not enough BTC available.");
             return failure;
         }
@@ -137,6 +140,7 @@ public class TestWallet extends TimerTask
             order.put("amount", amt);
             order.put("price", price);
             order.put("type", 0);
+            order.put("stauts", "success");
             orders.add(order);
             eur_available = eur_available.subtract(order.getBigDecimal("amount").multiply(order.getBigDecimal("price")));
             return order;
@@ -144,7 +148,7 @@ public class TestWallet extends TimerTask
         else
         {
             JSONObject failure = new JSONObject();
-            failure.put("status", "error");
+            failure.put("status", "failure");
             failure.put("reason", "Not enough BTC available.");
             return failure;
         }
@@ -174,12 +178,14 @@ public class TestWallet extends TimerTask
         {
             
             JSONObject success = new JSONObject(orders.get(index));
+            success.put("status", "success");
             orders.remove(index);
             return success;
         }
         else
         {
             JSONObject failure = new JSONObject();
+            failure.put("status", "failure");
             failure.put("error", "No order with id " + id);
             return failure;
         }
