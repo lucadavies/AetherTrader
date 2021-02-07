@@ -888,6 +888,7 @@ public class AetherTrader extends TimerTask
         System.out.println("4. Cancel order");
         System.out.println("5. Place sell limit order");
         System.out.println("6. Place buy limit order");
+        System.out.println("9. Start automatic trading programme");
         System.out.println("0. Quit");
     }
 
