@@ -1,34 +1,24 @@
 import java.io.IOError;
-import java.io.IOException;
 import java.math.BigDecimal;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
+import java.util.Timer;
+import java.util.TimerTask;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-/*  TODO ensure implementation of lastTransactionPrice
-    TODO Write logic for decision making
-        use fixed profit margins: 
-            HOLD_IN -> LONG caused by placing limit sell ~1.5% above last transaction price
-            HOLD_OUT -> SHORT caused by placing limit buy ~1.5% below last transaction price
-        use fixed loss-control margins:
-            LONG -> HOLD_IN caused by price dropping more than ~2% below last transaction price
-            SHORT -> HOLD_OUT casued by price rising more than ~2% above last transaction price
+/*  TODO ensure implementation of lastTransactionPrice (what happens on order cancel?)
+
+    TODO Check calculatePercentagChange (data doesn't seem to match charts at all)
+    TODO Write logic for decision: predictMarket()
     TODO Create framework for dry testing (save file with BTC holding amount?)
-    TODO Consider swapping timing logic to using Timer / TimerTask
 */
 
-
-public class AetherTrader
+public class AetherTrader extends TimerTask
 {
-    private String apiKey = "";
-    private String apiKeySecret = "";
-
     /**
      * Represents possible status of BTC holding.
      * Expected progression: HOLD_IN -> LONG -> HOLD_OUT -> SHORT -> [repeat].
@@ -47,17 +37,20 @@ public class AetherTrader
         UNKNOWN
     }
 
+    /**
+     * Represents the movement of the market in the short-term.
+     */
     private enum MarketState
     {
         /** Up > 5% */
         VOLATILE_UP,
         /** Up 2.5% - 5% */
         UUP,
-        /** Up 0.25% - 2.5% */
+        /** Up 0.20% - 2.5% */
         UP,
-        /** Between -0.25% and +0.25% */
+        /** Between -0.20% and +0.20% */
         FLAT,
-        /** Down  0.25% - 2.5% */
+        /** Down  0.20% - 2.5% */
         DW,
         /** Down 2.5% - 5% */
         DDW,
@@ -67,6 +60,9 @@ public class AetherTrader
         UNKNOWN
     }
 
+    /**
+     * Represents the trend the market is currently following.
+     */
     private enum Trend
     {
         UP,
@@ -75,33 +71,27 @@ public class AetherTrader
     }
 
     private BitstampAPIConnection conn = new BitstampAPIConnection("key", "keySecret");
-    private long startTime;
     private TradingState tradingState = TradingState.HOLD_IN;
     private MarketState marketState = MarketState.UNKNOWN;
-    private double lastTransactionPrice;
+    private double priceAtLastTransaction = -1;
+    private long lastOrderID;
     private CircularList<MarketState> marketHistory = new CircularList<MarketState>(5);
     private JSONObject internalError;
-    private SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM/yy hh:mm:ss");
+    private SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM/yy HH:mm:ss");
+    private final double PROFIT_MARGIN = 0.015;
+    private TestWallet wallet = new TestWallet(new BigDecimal(0.00338066), new BigDecimal(0));
 
     public AetherTrader()
     {
         internalError = new JSONObject();
         internalError.put("error", "Internal AetherTrader Error");
-        try
-        {
-            apiKey = Files.readString(Paths.get("key"));
-            apiKeySecret = Files.readString(Paths.get("keySecret"));
-        }
-        catch (IOException e)
-        {
-            throw new RuntimeException("Error reading API keys. Please check your key files and try again.", e);
-        }
     }
 
     //#region Trading methods
 
     /**
      * Get data on BTC/EUR trading at this instant.
+     * 
      * @return JSONObject with keys "last", "high", "low", "vwap", "volume", "bid", "ask", "timestamp" and "open".
      */
     public JSONObject getBTCData()
@@ -132,204 +122,510 @@ public class AetherTrader
     }
 
     /**
-     * Returns an array of open orders on account. Each represented as a JSONObject with keys:
+     * Returns a JSONObject containing order data on account. Each represented as a JSONObject with keys:
      * "datetime", "amount", "currecny_pair", "price", "id" and "type".
-     * @return JSONArray containing JSONObjects representing orders.
+     * 
+     * @return JSONObject with keys "status" and "orders". Value of orders is a JSONArray containing JSONObjects
+     * representing orders. If an error is encountered, returns a JSONObject
+     * with keys "status" and "error".
      */
-    public JSONArray getOpenOrders()
+    private JSONObject getOpenOrders()
     {
-        JSONArray data = new JSONArray(conn.sendPrivateRequest("/api/v2/open_orders/all/"));
-        
-        if (data.length() != 0)
+        String data = conn.sendPrivateRequest("/api/v2/open_orders/all/");
+        if (data.charAt(0) == '[') //array returned: success
         {
-            return data;
+            JSONArray orders = new JSONArray(data);
+            JSONObject result = new JSONObject();
+            result.put("status", "success");
+            result.put("orders", orders);
+            return result;
         }
-        else
+        else //(error) object returned: failure
         {
-            return null;
-        }
+            JSONObject err = new JSONObject(data);
+            err.put("status", "failure");
+            err.put("error", err.getString("reason"));
+            err.remove("reason");
+            return err;
+        }   
     }
 
     /**
-     * Cancels order with ID prompted for at command line.
-     * @return JSONObject representing the cancelled order
+     * Gets a formatted representation of all open orders.
+     * 
+     * @return A formatted string
      */
-    public JSONObject cancelOrder()
+    public String userGetOpenOrders()
     {
-        System.out.print("Order ID: ");
-        String id = getUserInput();
+        JSONObject orderData = getOpenOrders();
+        String result = "\n";
+        if (orderData.getString("status").equals("success"))
+        {
+            if (orderData.getJSONArray("orders").length() == 0)
+            {
+                result += "No orders to show.\n";
+            }
+            else
+            {
+                result += "Open orders:\n";
+                result += formatJSONArray(orderData.getJSONArray("orders"));
+            }
+        }
+        else
+        {
+            result += "Error:";
+            result += formatJSON(orderData);
+        }
+        
+        return result;
+    }
+    /**
+     * Cancels an order.
+     * 
+     * @param id The order to cancel
+     * @return JSONObject representing the cancelled order. If an error is encountered, returns a JSONObject
+     * with keys "status" and "error".
+     */
+    private JSONObject cancelOrder(long id)
+    {
         String[] params = new String[]
         {
             "id=" + id
         };
-        // TODO getOrder() to confirm via given order info
-        if (userConfirm())
+        JSONObject data = new JSONObject();
+        data = new JSONObject(conn.sendPrivateRequest("/api/v2/cancel_order/", params));
+        if (!data.has("error"))
         {
-            JSONObject data = new JSONObject(conn.sendPrivateRequest("/api/v2/cancel_order/", params));
-            if (!data.has("error"))
+            priceAtLastTransaction = -1;
+            lastOrderID = -1;
+            data.put("status", "success");
+            return data;
+        } 
+        data.put("status", "failure");
+        return data; 
+    }
+
+    /**
+     * Cancels order with ID prompted for at command line.
+     * 
+     * @return Status message indictating the result of the cancel operation.
+     */
+    public String userCancelOrder()
+    {
+        System.out.println();
+        long id = Long.parseLong(getUserInput("Order ID: "));
+
+        String result;
+        JSONObject order = getOrder(id);
+        System.out.println(formatJSON(order));
+        if (order.getString("status").equals("success"))
+        {
+            if (userConfirm())
             {
-                data.put("status", "success");
-                return data;
+                JSONObject cOrder = cancelOrder(id);
+                if (cOrder.getString("status").equals("success"))
+                {
+                    result = "Success, order cancelled.\n";
+                }
+                else
+                {
+                    result = "WARNING: order not cancelled.\n";
+                }
             }
             else
             {
-                data.put("status", "failure");
-                return data;
+                result = "Operation cancelled.\n";
             }
         }
         else
         {
-            return null;
-        }        
+            result = "No order with id " + id + ".";
+        }
+        return result;        
     }
 
     /**
-     * Place a limit sell order of amount and at price prompted for at command line.
+     * Places an instant sell order.
+     * 
+     * @param amt Amount of BTC to sell
+     * @return JSONObject reprenting the placed order. If an error is encountered, returns a JSONObject
+     * with keys "status" and "error".
+     */
+    private JSONObject placeSellInstantOrder(BigDecimal amt)
+    {
+        String[] params = new String[]
+        {
+            "amount=" + amt,
+        };
+        JSONObject data = new JSONObject(conn.sendPrivateRequest("/api/v2/sell/instant/btceur/", params));
+        if (!data.has("status"))
+        {
+            priceAtLastTransaction = data.getDouble("price");
+            lastOrderID = data.getLong("id");
+            data.put("status", "success");
+            return data;
+        }
+        else
+        {
+            data.put("status", "failure");
+            data.put("error", data.getString("reason"));
+            data.remove("reason");
+            return data;
+        }
+    }
+
+    /**
+     * Places an instant sell order of amount prompted for at command line.
+     * 
+     * @return Status message indicating the result of the order.
+     */
+    public String userSellInstantOrder()
+    {
+        System.out.println();
+        BigDecimal amt =  new BigDecimal(getUserInput("Amount (BTC): "));
+
+        double price = getBTCPrice();
+        String result;
+        System.out.println(String.format("Place sell instant order for %.8f BTC at ~€%.2f (Value: ~€%.2f)", amt, price, amt.multiply(new BigDecimal(price))));
+        if (userConfirm())
+        {
+            JSONObject sellOrder = placeSellInstantOrder(amt);
+            if (sellOrder.getString("status").equals("success"))
+            {
+                result = "Success, sell limit order placed:\n";
+            }
+            else
+            {
+                result = "Error placing order.\n";  
+            }
+            result += formatJSON(sellOrder);
+        }
+        else
+        {
+            result = "Operation cancelled.\n";
+        }  
+        return result;
+    }
+
+    /**
+     * Places an instant buy order.
+     * 
+     * @param amt Amount of BTC to buy
+     * @return JSONObject reprenting the placed order. If an error is encountered, returns a JSONObject
+     * with keys "status" and "error".
+     */
+    private JSONObject placeBuyInstantOrder(BigDecimal amt)
+    {
+        String[] params = new String[]
+        {
+            "amount=" + amt,
+        };
+        JSONObject data = new JSONObject(conn.sendPrivateRequest("/api/v2/buy/instant/btceur/", params));
+        if (!data.has("status"))
+        {
+            priceAtLastTransaction = data.getDouble("price");
+            lastOrderID = data.getLong("id");
+            data.put("status", "success");
+            return data;
+        }
+        else
+        {
+            data.put("status", "failure");
+            data.put("error", data.getString("reason"));
+            data.remove("reason");
+            return data;
+        }
+    }
+
+    /**
+     * Places an instant sell order of amount prompted for at command line.
+     * 
+     * @return Status message indicating the result of the order.
+     */
+    public String userBuyInstantOrder()
+    {
+        System.out.println();
+        BigDecimal amt = new BigDecimal((getUserInput("Amount (EUR): ")));
+
+        double price = getBTCPrice();
+        String result;
+        System.out.println(String.format("Place buy instant order for %.8f BTC at ~€%.2f (Value: ~%.8fBTC)", amt, price, amt.divide(new BigDecimal(price))));
+        if (userConfirm())
+        {
+            JSONObject buyOrder = placeBuyInstantOrder(amt);
+            if (buyOrder.getString("status").equals("success"))
+            {
+                result = "Success, sell limit order placed:\n";
+                result += formatJSON(buyOrder);
+            }
+            else
+            { 
+                result = "Error placing order.\n";
+                result += formatJSON(buyOrder);
+            }
+        }
+        else
+        {
+            result = "Operation cancelled.\n";
+        }  
+        return result;
+    }
+
+    /**
+     * Places a sell limit order.
+     * 
+     * @param amt Amount to buy (BTC)
+     * @param price Price to buy at (EUR)
      * @return JSONObject repesenting the placed order.
      */
-    public JSONObject placeSellLimitOrder()
+    private JSONObject placeSellLimitOrder(BigDecimal amt, double price)
     {
-        System.out.print("Amount (BTC): ");
-        BigDecimal amt =  new BigDecimal(System.console().readLine());
-        System.out.print("Price (EUR): ");
-        double price = Double.parseDouble(System.console().readLine());
         String[] params = new String[]
         {
             "amount=" + amt,
             "price=" + price
         };
+        JSONObject data = new JSONObject(conn.sendPrivateRequest("/api/v2/sell/btceur/", params));
+        if (!data.has("status"))
+        {
+            priceAtLastTransaction = getBTCPrice();
+            lastOrderID = data.getLong("id");
+            data.put("status", "success");
+            return data;
+        }
+        else
+        {
+            data.put("status", "failure");
+            data.put("error", data.getString("reason"));
+            data.remove("reason");
+            return data;
+        }
+    }
+
+    /**
+     * Place a limit sell order of amount/at price prompted for at command line.
+     * 
+     * @return Status message indicating the result of the order.
+     */
+    public String userSellLimitOrder()
+    {
+        System.out.println();
+        BigDecimal amt =  new BigDecimal(getUserInput("Amount (BTC): "));
+        double price = Double.parseDouble(getUserInput("Price (EUR): "));
+
+        String result;
         System.out.println(String.format("Place sell limit order for %.8f BTC at €%.2f (Value: €%.2f)", amt, price, amt.multiply(new BigDecimal(price))));
         if (userConfirm())
         {
-            JSONObject data = new JSONObject(conn.sendPrivateRequest("/api/v2/sell/btceur/", params));
-            if (!data.has("status"))
+            JSONObject sellOrder = placeSellLimitOrder(amt, price);
+            if (sellOrder.getString("status").equals("success"))
             {
-                lastTransactionPrice = price;
-                data.put("status", "success");
-                return data;
+                result = "Success, sell limit order placed:\n";
+                result += formatJSON(sellOrder);
             }
             else
             {
-                data.put("status", "failure");
-                return data;
+                result = "Error placing order.\n";
+                result += formatJSON(sellOrder);
             }
         }
         else
         {
-            return null;
-        }
+            result = "Operation cancelled.\n";
+        }  
+        return result;
     }
 
     /**
-     * Place a limit buy order of amount and at price prompted for at command line.
+     * Places a buy limit order.
+     * 
+     * @param amt Amount to buy (BTC)
+     * @param price Price to buy at (EUR)
      * @return JSONObject repesenting the placed order.
      */
-    public JSONObject placeBuyLimitOrder()
+    private JSONObject placeBuyLimitOrder(BigDecimal amt, double price)
     {
-        System.out.print("Amount (BTC): ");
-        BigDecimal amt = new BigDecimal(System.console().readLine());
-        System.out.print("Price (EUR): ");
-        double price = Double.parseDouble(System.console().readLine());
         String[] params = new String[]
         {
             "amount=" + amt,
             "price=" + price
         };
+        JSONObject data = new JSONObject(conn.sendPrivateRequest("/api/v2/buy/btceur/", params));
+        if (!data.has("status"))
+        {
+            priceAtLastTransaction = getBTCPrice();
+            lastOrderID = data.getLong("id");
+            data.put("status", "success");
+            return data;
+        }
+        else
+        {
+            data.put("status", "failure");
+            data.put("error", data.getString("reason"));
+            data.remove("reason");
+            return data;
+        }
+    }
+
+    /**
+     * Place a limit buy order of amount/at price prompted for at command line.
+     * 
+     * @return Status message indicating the result of the order.
+     */
+    public String userBuyLimitOrder()
+    {
+        System.out.println();
+        BigDecimal amt =  new BigDecimal(getUserInput("Amount (BTC): "));
+        double price = Double.parseDouble(getUserInput("Price (EUR): "));
+
+        JSONObject buyOrder = placeBuyLimitOrder(amt, price);
+        String result;
+
         System.out.println(String.format("Place buy limit order for %.8f BTC at €%.2f (Value: €%.2f)", amt, price, amt.multiply(new BigDecimal(price))));
         if (userConfirm())
         {
-            JSONObject data = new JSONObject(conn.sendPrivateRequest("/api/v2/buy/btceur/", params));
-            if (!data.has("status"))
+            if (buyOrder.getString("status").equals("success"))
             {
-                lastTransactionPrice = price;
-                data.put("status", "success");
-                return data;
+                result = "Success, sell limit order placed:\n";
+                result += formatJSON(buyOrder);
             }
             else
             {
-                data.put("status", "failure");
-                return data;
+                result = "Error placing order.\n";
+                result += formatJSON(buyOrder);
             }
         }
         else
         {
-            return null;
+            result = "Operation cancelled.\n";
         }
+        return result;
     }
 
     //#endregion
     
     //#region Auto Trading methods
 
+    /**
+     * Begins running thr automatic trading programme.
+     * 
+     * @return A comment reflecting on the user's decision to begin the programme or not. (WIP)
+     */
     public String startAuto()
     {
+        System.out.print("This feature is currently HEAVILY in development ");
+        System.out.print("and so will not trade on your actual and instead uses a test wallet. ");
+        System.out.println("Watch for future releases for a working trading programme.");
         System.out.println("This will allow the program to begin trading automaticaly according to the in-built logic. Are you sure you want to continue?");
         if (userConfirm())
         {
-            run(0.5);
-            return "Bold move.";
+            // TODO setup: get trading state, cancel current orders
+            tradingState = getTradingState();
+            new Timer().scheduleAtFixedRate(this, 0, 60000);
+            return "Bold move.\n";
         }
         else
         {
-            return "Wise choice.";
+            return "Wise choice.\n";
         }
     }
 
-    private void run(double hrsToRun)
-    {
-        double secondsToRun = hrsToRun * 60 * 60;
-        startTime = System.currentTimeMillis();
-        long elapsedTime = 0;
-        do
+    public void run()
+    {        
+        //get market state now
+        float percentChange = calculatePercentChange(60, 60);
+        if (percentChange == -999)
         {
-            elapsedTime = (System.currentTimeMillis() - startTime) / 1000L;
-            
-            //get market state now
-            if (elapsedTime % 60L == 0) // do this every 60 seconds
-            {
-                float percentChange = calculatePercentChange();
-                marketState = getMarketState(percentChange);
-                marketHistory.push(marketState);
-                System.out.println(String.format("[%s] %-4ss: %s (%+.2f%%)", dateFormat.format(new Date()), elapsedTime, marketState, percentChange));
-            }
+            return;
+        }
 
-            // TODO decide what to do
-            TradingState nextState = decideNextState();
-            
-            // TODO Do the thing
+        marketState = getMarketState(percentChange);
+        marketHistory.push(marketState);
+        System.out.println(String.format("[%s]: %s (%+.2f%%)", dateFormat.format(new Date()), marketState, percentChange));
 
-            //wait
-            try
-            {
-                Thread.sleep(500);
-            } catch (InterruptedException e)
-            {
-                System.out.println("Wait interrupted. Continuing.");
-            }
-        } while (elapsedTime < secondsToRun);
+        // TODO decide what to do
+        tradingState = doAction();
     }
 
-    private TradingState decideNextState()
+    /**
+     * Examines current trading and market state to decide next action. Executes next action if
+     * applicable and returns new trading state.
+     * 
+     * @return resultant trading state
+     * @see TradingState
+     */
+    private TradingState doAction()
     {
+        JSONObject btcData = getBTCData();
+        JSONObject bal;
+        if (priceAtLastTransaction == -1)
+        {
+            priceAtLastTransaction = btcData.getDouble("last");
+        }
+
         switch (tradingState)
         {
             case HOLD_IN:
                 if (predictMarket() == Trend.UP)
                 {
-                    // TODO place limit sell > 1% above lastTransaction price
+                    bal = wallet.getBalance();
+                    wallet.placeSellLimitOrder(bal.getBigDecimal("btc_available"), priceAtLastTransaction * (1 + PROFIT_MARGIN));
+                    System.out.println(String.format("[%s]: HOLD_IN -> LONG (Limit sell placed at %.2f)", dateFormat.format(new Date()), priceAtLastTransaction * (1 + PROFIT_MARGIN)));
+                    return TradingState.LONG;
                 }
                 break;
             case LONG:
-                // TODO check market isn't falling too much
+                btcData = getBTCData();
+                if (predictMarket() == Trend.DOWN || btcData.getDouble("last") > priceAtLastTransaction * (1 - PROFIT_MARGIN))
+                {
+                    // if last price is a whole margin below price when last order placed (wrong direction)
+                    // Trend is down when in a long position
+                    JSONObject cancelledOrder = wallet.cancelOrder(lastOrderID);
+                    if (cancelledOrder.getString("status").equals("success"))
+                    {
+                        bal = wallet.getBalance();
+                        JSONObject o = wallet.placeSellInstantOrder(bal.getBigDecimal("btc_available"));
+                        System.out.println(String.format("[%s]: LONG -> HOLD_IN (Instant sell placed at €%.2f)", dateFormat.format(new Date()), o.getDouble("price")));
+                        return TradingState.HOLD_IN;
+                    }
+                    else
+                    {
+                        System.out.println("WARNING: Unable to cancel limit sell order. Market falling while in a LONG position.");
+                        System.out.println(String.format("[%s]: LONG -> LONG (Failed to cancel order)", dateFormat.format(new Date())));
+                        return TradingState.LONG;
+                    }
+                }
                 break;
             case HOLD_OUT:
                 if (predictMarket() == Trend.DOWN)
                 {
-                    // TODO place limit buy > 1% below lastTransaction price
+                    bal = wallet.getBalance();
+                    wallet.placeBuyLimitOrder(bal.getBigDecimal("btc_available"), priceAtLastTransaction * (1 - PROFIT_MARGIN));
+                    System.out.println(String.format("[%s]: HOLD_OUT -> SHORT (Limit buy placed at €%.2d)", dateFormat.format(new Date()), priceAtLastTransaction * (1 - PROFIT_MARGIN)));
+                    return TradingState.SHORT;
                 }
                 break;
             case SHORT:
-                // TODO check market isn't rising too much
+                btcData = getBTCData();
+                if (predictMarket() == Trend.UP || btcData.getDouble("last") > priceAtLastTransaction * (1 + PROFIT_MARGIN))
+                {
+                    // if last price is a whole margin above price when last order placed (wrong direction)
+                    // Trend is up when in a short position
+                    JSONObject cancelledOrder = wallet.cancelOrder(lastOrderID);
+                    if (cancelledOrder.getString("status").equals("success"))
+                    {
+                        bal = wallet.getBalance();
+                        JSONObject o = wallet.placeBuyInstantOrder(bal.getBigDecimal("eur_available"));
+                        System.out.println(String.format("[%s]: SHORT -> HOLD_OUT (Instant buy placed at €%.2d)", dateFormat.format(new Date()), o.getDouble("price")));
+                        return TradingState.HOLD_OUT;
+                    }
+                    else
+                    {
+                        System.out.println("WARNING: Unable to cancel limit buy order. Market rising while in a SHORT position.");
+                        System.out.println(String.format("[%s]: SHORT -> SHORT (Failed to cancel order)", dateFormat.format(new Date())));
+                        return TradingState.SHORT;
+                    }  
+                }
                 break;
             default:
                 break;
@@ -337,8 +633,27 @@ public class AetherTrader
         return TradingState.UNKNOWN;
     }
 
+    /**
+     * Predicts the likely movement of the market based upon previous data. (HEAVYILY WIP).
+     * @return The <code>Trend</code> the market will follow 
+     * @see Trend
+     */
     private Trend predictMarket()
     {
+        if (marketHistory.contains(MarketState.UNKNOWN))
+        {
+            return Trend.FLAT;
+        }
+        
+        if (marketState == MarketState.UP || marketState == MarketState.UUP)
+        {
+            return Trend.UP;
+        }
+        else if (marketState == MarketState.DW || marketState == MarketState.DDW)
+        {
+            return Trend.DOWN;
+        }
+        
         // TODO look at marketHistory
         return null;
     }
@@ -347,89 +662,129 @@ public class AetherTrader
 
     //#region Trading Utilities
 
+    /**
+     * Gets the current price of BTC in EUR.
+     * 
+     * @return the price
+     */
     public double getBTCPrice()
     {
         JSONObject data = new JSONObject(conn.sendPublicRequest("/api/v2/ticker/btceur"));
         return (data.getDouble("last"));
     }
 
+    /**
+     * Gets a list of OHLC data.
+     * 
+     * @param step Timeframe in seconds
+     * @param limit Maximum number of results to return
+     * @return JSONObject cont
+     */
     private JSONObject getOHLCData(int step, int limit)
     {
-        if (!isValidOHLCStep(step) || limit > 1000 || limit < 1)
-        {
-            return internalError;
-        }
-
         String[] params = new String[]
         {
             "step=" + step,
             "limit=" + limit
         };
-        JSONObject OhlcData = new JSONObject(conn.sendPublicRequest("/api/v2/ohlc/btceur/", params));
-        if (!OhlcData.has("code"))
+        JSONObject ohlcData = new JSONObject(conn.sendPublicRequest("/api/v2/ohlc/btceur/", params));
+
+        JSONObject resData = new JSONObject(ohlcData.getJSONObject("data"));
+        if (!ohlcData.has("code"))
         {
-            return OhlcData.getJSONObject("data");
+            resData.put("status", "success");
+            return ohlcData.getJSONObject("data");
         }
         else
         {
+            resData.put("status", "failure");
+            resData.put("error", ohlcData.get("errors"));
             return internalError;
         }
     }
 
-    private float calculatePercentChange()
+    /**
+     * Get details of an order.
+     * 
+     * @param id The ID of the order
+     * @return JSONObject containing order details. Key "status" is "success" if order retrieved successfully, else it
+     * is "failure".
+     */
+    private JSONObject getOrder(long id)
     {
-        JSONObject data = getOHLCData(60, 60); //one minute interval, for one hour back
-        if (data.has("error"))
+        JSONObject orderData = getOpenOrders();
+        if (orderData.getString("status").equals("success"))
         {
-            //throw new Exception();
+            JSONArray orders = orderData.getJSONArray("orders");
+            for (Object o : orders)
+            {
+                JSONObject order = (JSONObject)o;
+                if (((JSONObject)order).getLong("id") == id)
+                {
+                    return order;
+                }
+            }
+            JSONObject err = new JSONObject();
+            err.put("status", "failure");
+            err.put("error", "No order with id " + id + ".");
+            return err;
         }
-        float diff = 0;
-        JSONArray vals = data.getJSONArray("ohlc");
-
-        JSONObject v;
-        float open;
-        float close;
-        for (int i = 0; i < vals.length(); i++)
+        else
         {
-            v = vals.getJSONObject(i);
-            open = v.getFloat("open");
-            close = v.getFloat("close");
-            diff += close - open;
+            return orderData;
         }
         
-        float firstOpen = vals.getJSONObject(0).getFloat("open");
-        float lastClose = vals.getJSONObject(vals.length() - 1).getFloat("close");
-        float percentChange = (diff / firstOpen) * 100;
-        //System.out.println(String.format("BTC moved %+.2f%% in the last %d minutes.", percentChange, (1800 / 60) * 8));
-        //System.out.println(String.format("%.2f -> %.2f", firstOpen, lastClose));
-        return percentChange;
     }
 
-    private boolean isValidOHLCStep(int step)
+    /**
+     * Calculates the percentage difference in price over a given time period.
+     * 
+     * @param timeStep The granularity of calculations in seconds
+     * @param duration The number of <code>timeSteps</code> back to include in calculation
+     * @return The percentage change, postive if up, negative if down
+     */
+    private float calculatePercentChange(int timeStep, int duration)
     {
-        switch (step)
+        JSONObject data = getOHLCData(timeStep, duration); //one minute interval, for one hour back
+        if (data.getString("status").equals("success"))
         {
-            case 60:
-            case 180:
-            case 300:
-            case 900:
-            case 1800:
-            case 3600:
-            case 7200:
-            case 14400:
-            case 21600:
-            case 43200:
-            case 86400:
-            case 259200:
-                return true;
-            default:
-                return false;
+            float diff = 0;
+            JSONArray vals = data.getJSONArray("ohlc");
+
+            JSONObject v;
+            float open;
+            float close;
+            for (int i = 0; i < vals.length(); i++)
+            {
+                v = vals.getJSONObject(i);
+                open = v.getFloat("open");
+                close = v.getFloat("close");
+                diff += close - open;
+            }
+            
+            float firstOpen = vals.getJSONObject(0).getFloat("open");
+            float lastClose = vals.getJSONObject(vals.length() - 1).getFloat("close");
+            float percentChange = (diff / firstOpen) * 100;
+            // System.out.println(String.format("BTC moved %+.2f%% in the last %d minutes.", percentChange, 60));
+            // System.out.println(String.format("%.2f -> %.2f", firstOpen, lastClose));
+            return percentChange;
+        }
+        else
+        {
+            return -999;
         }
     }
 
+    /**
+     * Gets the current market state from the percentage change
+     * 
+     * @param percent Change in market
+     * @return The observed <code>MarketState</code>
+     * @see MarketState
+     */
     private MarketState getMarketState(float percent)
     {
-        if (percent < 0.25 && percent > -0.25) //too small to consider
+        if (percent < 0.20 && percent > -0.20) //too small to consider
         {
             return MarketState.FLAT;
         }
@@ -439,7 +794,7 @@ public class AetherTrader
             {
                 if (percent < 1.5)
                 {
-                    return MarketState.UP;  // UP 0.25 - 1.5%
+                    return MarketState.UP;  // UP 0.20 - 1.5%
                 }
                 else if (percent < 5)
                 {
@@ -454,7 +809,7 @@ public class AetherTrader
             {
                 if (percent > -1.5)
                 {
-                    return MarketState.DW;  // DOWN 0.25 - 1.5%
+                    return MarketState.DW;  // DOWN 0.20 - 1.5%
                 }
                 else if (percent > -5)
                 {
@@ -468,9 +823,14 @@ public class AetherTrader
         }
     }
 
+    /**
+     * Gets the current trading state using the balances of BTC and EUR
+     * @return The <code>TradingState</code> of this account
+     * @see TradingState
+     */
     private TradingState getTradingState()
     {
-        JSONObject balance = getBalance();
+        JSONObject balance = wallet.getBalance();
         BigDecimal eurAvail = balance.getBigDecimal("eur_available");
         BigDecimal eurBal = balance.getBigDecimal("eur_balance");
         BigDecimal btcAvail = balance.getBigDecimal("btc_available");
@@ -516,6 +876,9 @@ public class AetherTrader
 
     //#region Interface Utilities
 
+    /**
+     * Displays the menu at command line.
+     */
     public void showMenu()
     {
         System.out.println("----- MENU -----");
@@ -528,12 +891,17 @@ public class AetherTrader
         System.out.println("0. Quit");
     }
 
+    /**
+     * Gets the user's menu choice.
+     * 
+     * @return The user's choice
+     */
     public int getChoice()
     {
         int choice = 0;
         try
         {
-            choice = Integer.parseInt(getUserInput());
+            choice = Integer.parseInt(getUserInput("Action: "));
         }
         catch (Exception e)
         {
@@ -542,9 +910,16 @@ public class AetherTrader
         return choice;
     }
 
-    private String getUserInput()
+    /**
+     * Gets user input from command line.
+     * 
+     * @param msg Message to prompt the user with
+     * @return The user's input
+     */
+    private String getUserInput(String msg)
     {
         String input = "";
+        System.out.print(msg);
         try
         {
             input = System.console().readLine();
@@ -556,10 +931,15 @@ public class AetherTrader
         return input;
     }
 
+    /**
+     * Prompts the user to confirm with a yes/no prompt.
+     * 
+     * @return True is user entered "yes", otherwise False
+     */
     private boolean userConfirm()
     {
-        System.out.print("Confirm? [yes/no]: ");
-        String input = getUserInput();
+        String input = getUserInput("Confirm? [yes/no]: ");
+        System.out.println();
         if (input.toLowerCase().equals("yes"))
         {
             return true;
@@ -570,9 +950,15 @@ public class AetherTrader
         }
     }
 
+    /**
+     * Formats a JSONObject for printing to command line
+     * 
+     * @param obj JSONObject to format
+     * @return Formatted string
+     */
     private static String formatJSON(JSONObject obj)
     {
-        String s = "";
+        String s = "\n";
         for (String field : obj.keySet())
         {
             s += String.format("%-15s: %s\n", field, obj.get(field));
@@ -580,12 +966,18 @@ public class AetherTrader
         return s;
     }
 
+    /**
+     * Formats a JSONArray for printing to command line
+     * 
+     * @param obj JSONArray to format
+     * @return Formatted string
+     */
     private static String formatJSONArray(JSONArray obj)
     {
         String s = "";
         for (Object o : obj)
         {
-            s += formatJSON((JSONObject)o) + "\n";
+            s += formatJSON((JSONObject)o);
         }
         return s;
     }
@@ -611,67 +1003,21 @@ public class AetherTrader
                     System.out.println(formatJSON(trader.getBalance()));
                     break;
                 case 3:
-                    JSONArray orders = trader.getOpenOrders();
-                    if (orders == null)
-                    {
-                        System.out.println("No orders to show.");
-                    }
-                    else
-                    {
-                        System.out.println("Open orders:");
-                        System.out.println(formatJSONArray(orders));
-                    }
+                    System.out.println(trader.userGetOpenOrders());
                     break;
                 case 4:
-                    JSONObject cOrder = trader.cancelOrder();
-                    if (cOrder == null)
-                    {
-                        System.out.println("Operation cancelled.");
-                    }
-                    else if (cOrder.getString("status").equals("failure"))
-                    {
-                        System.out.println("WARNING: order not cancelled.");
-                        System.out.println(formatJSON(cOrder));
-                    }
-                    else
-                    {
-                        System.out.println("Success, order cancelled.");
-                        System.out.println(formatJSON(cOrder));
-                    }
+                    System.out.println(trader.userCancelOrder());
                     break;
                 case 5:
-                    JSONObject sellOrder = trader.placeSellLimitOrder();
-                    if (sellOrder == null)
-                    {
-                        System.out.println("Operation cancelled.");
-                    }
-                    else if (sellOrder.getString("status").equals("failure"))
-                    {
-                        System.out.println("Error placing order.");
-                        System.out.println(formatJSON(sellOrder));
-                    }
-                    else
-                    {
-                        System.out.println("Success, sell limit order placed:");
-                        System.out.println(formatJSON(sellOrder));
-                    }
+                    System.out.println(trader.userSellLimitOrder());
                     break;
                 case 6:
-                    JSONObject buyOrder = trader.placeBuyLimitOrder();
-                    if (buyOrder == null)
-                    {
-                        System.out.println("Operation cancelled.");
-                    }
-                    else if (buyOrder.getString("status").equals("failure"))
-                    {
-                        System.out.println("Error placing order.");
-                        System.out.println(formatJSON(buyOrder));
-                    }
-                    else
-                    {
-                        System.out.println("Success, sell limit order placed:");
-                        System.out.println(formatJSON(buyOrder));
-                    }
+                    System.out.println(trader.userBuyLimitOrder());
+                    break;
+                case 9:
+                    System.out.println(trader.startAuto());
+                    break menu;
+                case 10:
                     break;
                 case 0:
                     break menu;
@@ -679,6 +1025,7 @@ public class AetherTrader
                     System.out.println("Select a valid choice");
                     break;
             }
+            trader.getUserInput("Press enter to continue...");
         }
     }
 }

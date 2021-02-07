@@ -1,0 +1,223 @@
+import java.math.BigDecimal;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.Timer;
+import java.util.TimerTask;
+
+import org.json.JSONObject;
+
+// TODO simulate trading fee!!!!
+public class TestWallet extends TimerTask
+{
+    BigDecimal btc_available;
+    BigDecimal btc_balance;
+    BigDecimal eur_available;
+    BigDecimal eur_balance;
+
+    ArrayList<JSONObject> orders = new ArrayList<JSONObject>();
+    long nextOrderId = 0;
+
+    private SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM/yy hh:mm:ss");
+    private BitstampAPIConnection conn = new BitstampAPIConnection("key", "keySecret");
+
+    public TestWallet(BigDecimal btc, BigDecimal eur)
+    {
+        btc_available = btc;
+        btc_balance = btc;
+        eur_available = eur;
+        eur_balance = eur;
+        new Timer().scheduleAtFixedRate(this, 0, 60000);
+    }
+
+    /**
+     * Get data on BTC/EUR trading at this instant.
+     * @return JSONObject with keys "last", "high", "low", "vwap", "volume", "bid", "ask", "timestamp" and "open".
+     */
+    public JSONObject getBTCData()
+    {
+        JSONObject data = new JSONObject(conn.sendPublicRequest("/api/v2/ticker/btceur"));
+        return data;
+    }
+
+    public JSONObject getBalance()
+    {
+        JSONObject balance = new JSONObject();
+        balance.put("btc_available", btc_available);
+        balance.put("btc_balance", btc_balance);
+        balance.put("eur_available", eur_available);
+        balance.put("eur_balance", eur_balance);
+        BigDecimal value = balance.getBigDecimal("eur_balance").add(balance.getBigDecimal("btc_balance").multiply(getBTCData().getBigDecimal("last")));
+        balance.put("value", value);
+        return balance;
+    }
+
+    public JSONObject placeSellInstantOrder(BigDecimal amt)
+    {
+        if (!(amt.compareTo(btc_available) == 1))
+        {
+            JSONObject order = new JSONObject();
+            JSONObject btcData = getBTCData();
+            order.put("id", nextOrderId++);
+            order.put("amount", amt);
+            order.put("price", btcData.getBigDecimal("last"));
+            order.put("type", 1);
+            order.put("status", "success");
+
+            btc_available.subtract(amt);
+            btc_balance.subtract(amt);
+            eur_available.add(amt.multiply(btcData.getBigDecimal("last")));
+            eur_balance.add(amt.multiply(btcData.getBigDecimal("last")));
+
+            return order;
+        }
+        else
+        {
+            JSONObject failure = new JSONObject();
+            failure.put("status", "failure");
+            failure.put("reason", "Not enough BTC available.");
+            return failure;
+        }
+    }
+
+    public JSONObject placeBuyInstantOrder(BigDecimal amt)
+    {
+        if (!(eur_available.compareTo(amt) == -1))
+        {
+            JSONObject order = new JSONObject();
+            JSONObject btcData = getBTCData();
+            order.put("id", nextOrderId++);
+            order.put("amount", amt);
+            order.put("price", btcData.getBigDecimal("last"));
+            order.put("type", 1);
+            order.put("status", "success");
+
+            btc_available.add(amt.divide(btcData.getBigDecimal("last")));
+            btc_balance.add(amt.divide(btcData.getBigDecimal("last")));
+            eur_available.subtract(amt);
+            eur_balance.subtract(amt);
+
+            return order;
+        }
+        else
+        {
+            JSONObject failure = new JSONObject();
+            failure.put("status", "failure");
+            failure.put("error", "Not enough EUR available.");
+            return failure;
+        }
+    }
+
+    public JSONObject placeSellLimitOrder(BigDecimal amt, double price)
+    {
+        if (!(amt.compareTo(btc_available) == 1))
+        {
+            JSONObject order = new JSONObject();
+            order.put("id", nextOrderId++);
+            order.put("amount", amt);
+            order.put("price", price);
+            order.put("type", 1);
+            order.put("status", "success");
+            orders.add(order);
+            btc_available.subtract(amt);
+            return order;
+        }
+        else
+        {
+            JSONObject failure = new JSONObject();
+            failure.put("status", "failure");
+            failure.put("reason", "Not enough BTC available.");
+            return failure;
+        }
+    }
+
+    public JSONObject placeBuyLimitOrder(BigDecimal amt, double price)
+    {
+        if (!(amt.compareTo(btc_available) == 1))
+        {
+            JSONObject order = new JSONObject();
+            order.put("id", nextOrderId++);
+            order.put("amount", amt);
+            order.put("price", price);
+            order.put("type", 0);
+            order.put("stauts", "success");
+            orders.add(order);
+            eur_available = eur_available.subtract(order.getBigDecimal("amount").multiply(order.getBigDecimal("price")));
+            return order;
+        }
+        else
+        {
+            JSONObject failure = new JSONObject();
+            failure.put("status", "failure");
+            failure.put("reason", "Not enough BTC available.");
+            return failure;
+        }
+    }
+
+    public JSONObject cancelOrder(long id)
+    {
+        int index = -1;
+        for (JSONObject order : orders)
+        {
+            if (order.getLong("id") == id)
+            {
+                if (order.getInt("type") == 0)
+                {
+                    eur_available = eur_available.add(order.getBigDecimal("amount").multiply(order.getBigDecimal("price")));
+                }
+                else if (order.getInt("type") == 1)
+                {
+                    btc_available = btc_available.add(order.getBigDecimal("amount"));
+                    
+                }
+                index = orders.indexOf(order);
+                break;
+            }
+        }
+        if (index != -1)
+        {
+            
+            JSONObject success = new JSONObject(orders.get(index));
+            success.put("status", "success");
+            orders.remove(index);
+            return success;
+        }
+        else
+        {
+            JSONObject failure = new JSONObject();
+            failure.put("status", "failure");
+            failure.put("error", "No order with id " + id);
+            return failure;
+        }
+    }
+
+    public void run()
+    {
+        JSONObject data = getBTCData();
+        ArrayList<Integer> indexes = new ArrayList<Integer>();
+        for (JSONObject order : orders)
+        {
+            if (order.getInt("type") == 0)
+            {
+                if (data.getDouble("last") <= order.getDouble("price"))
+                {
+                    btc_balance = btc_balance.add(order.getBigDecimal("amount"));
+                    indexes.add(orders.indexOf(order));
+                }
+            }
+            else if (order.getInt("type") == 1)
+            {
+                if (data.getDouble("last") >= order.getDouble("price"))
+                {
+                    btc_balance = btc_balance.subtract(order.getBigDecimal("amount"));
+                    indexes.add(orders.indexOf(order));
+                } 
+            }
+        }
+        for (int i : indexes)
+        {
+            System.out.println(String.format("[%s]: order %d executed at %.2f", dateFormat.format(new Date()), orders.get(i).getLong("id"), orders.get(i).getDouble("price")));
+            orders.remove(i);
+        }
+    }
+}
