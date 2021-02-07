@@ -17,7 +17,6 @@ import org.json.JSONObject;
     TODO Create framework for dry testing (save file with BTC holding amount?)
 */
 
-
 public class AetherTrader extends TimerTask
 {
     /**
@@ -514,6 +513,9 @@ public class AetherTrader extends TimerTask
      */
     public String startAuto()
     {
+        System.out.print("This feature is currently HEAVILY in development ");
+        System.out.print("and so will not trade on your actual and instead uses a test wallet. ");
+        System.out.println("Watch for future releases for a working trading programme.");
         System.out.println("This will allow the program to begin trading automaticaly according to the in-built logic. Are you sure you want to continue?");
         if (userConfirm())
         {
@@ -1017,7 +1019,6 @@ public class AetherTrader extends TimerTask
                     System.out.println(trader.startAuto());
                     break menu;
                 case 10:
-                    trader.getOHLCData(60, 60);
                     break;
                 case 0:
                     break menu;
