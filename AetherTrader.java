@@ -672,11 +672,11 @@ public class AetherTrader extends TimerTask
     }
 
     /**
-     * Gets a list of OHLC data.
+     * Gets a list of OHLC data. 
      * 
      * @param step Timeframe in seconds
      * @param limit Maximum number of results to return
-     * @return JSONObject cont
+     * @return JSONObject containing keys "status" and "data" (OHLC data)
      */
     private JSONObject getOHLCData(int step, int limit)
     {
@@ -687,17 +687,18 @@ public class AetherTrader extends TimerTask
         };
         JSONObject ohlcData = new JSONObject(conn.sendPublicRequest("/api/v2/ohlc/btceur/", params));
 
-        JSONObject resData = new JSONObject(ohlcData.getJSONObject("data"));
+        JSONObject resData = new JSONObject();
         if (!ohlcData.has("code"))
         {
             resData.put("status", "success");
-            return ohlcData.getJSONObject("data");
+            resData.put("data", ohlcData.getJSONObject("data").getJSONArray("ohlc"));
+            return resData;
         }
         else
         {
             resData.put("status", "failure");
             resData.put("error", ohlcData.get("errors"));
-            return internalError;
+            return resData;
         }
     }
 
@@ -747,7 +748,7 @@ public class AetherTrader extends TimerTask
         if (data.getString("status").equals("success"))
         {
             float diff = 0;
-            JSONArray vals = data.getJSONArray("ohlc");
+            JSONArray vals = data.getJSONArray("data");
 
             JSONObject v;
             float open;
