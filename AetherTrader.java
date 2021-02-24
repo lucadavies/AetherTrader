@@ -43,21 +43,28 @@ public class AetherTrader extends TimerTask
     private enum MarketState
     {
         /** Up > 5% */
-        VOLATILE_UP,
+        VOLATILE_UP (3),
         /** Up 2.5% - 5% */
-        UUP,
+        UUP (2),
         /** Up 0.20% - 2.5% */
-        UP,
+        UP (1),
         /** Between -0.20% and +0.20% */
-        FLAT,
+        FLAT (0),
         /** Down  0.20% - 2.5% */
-        DW,
+        DW (-1),
         /** Down 2.5% - 5% */
-        DDW,
+        DDW (-2),
         /** Down > 5% */
-        VOLATILE_DW,
+        VOLATILE_DW (-3),
         /** An error caused a failure to measure market state. */
-        UNKNOWN
+        UNKNOWN (0);
+
+        protected int v;
+
+        MarketState (int val)
+        {
+            this.v = val;
+        }
     }
 
     /**
@@ -75,13 +82,22 @@ public class AetherTrader extends TimerTask
     private MarketState marketState = MarketState.UNKNOWN;
     private double priceAtLastTransaction = -1;
     private long lastOrderID;
-    private CircularList<MarketState> marketHistory = new CircularList<MarketState>(5);
     private JSONObject internalError;
     private SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM/yy HH:mm:ss");
-    private final double PROFIT_MARGIN = 0.015;
-    private TestWallet wallet;
     private Timer autoTradingTimer;
     private boolean isAutotrading = false;
+
+    private final double PROFIT_MARGIN = 0.015;
+    private final double OVERALL_TREND_WEIGHT = 1.0;
+    private final double ALL_UP_DW_WEIGHT = 1.5;
+    private TestWallet wallet;
+
+    /**
+     * Market history represents the history trends of the market a number of increments back in time. Each increment
+     * overlaps the majority of it's measurement period. As it stands, MarketStates are calculated at 1-minute
+     * granularity for an hour. So a market history five long covers a time period of 1h5m only.
+     */
+    private CircularList<MarketState> marketHistory = new CircularList<MarketState>(10);
 
     public AetherTrader()
     {
@@ -508,35 +524,6 @@ public class AetherTrader extends TimerTask
     
     //#region Auto Trading methods
 
-    /**
-     * Begins running thr automatic trading programme.
-     * 
-     * @return A comment reflecting on the user's decision to begin the programme or not. (WIP)
-     */
-    public String startAuto()
-    {
-        System.out.print("This feature is currently HEAVILY in development ");
-        System.out.print("and so will not trade on your actual and instead uses a test wallet. ");
-        System.out.println("Watch for future releases for a working trading programme.");
-        System.out.println("This will allow the program to begin trading automaticaly according to the in-built logic. Are you sure you want to continue?");
-        if (userConfirm())
-        {
-            wallet = new TestWallet(new BigDecimal(0.00338066), new BigDecimal(0));
-            isAutotrading = true;
-
-            // TODO setup: cancel current orders
-            tradingState = getTradingState();
-
-            autoTradingTimer = new Timer();
-            autoTradingTimer.scheduleAtFixedRate(this, 0, 60000);
-            return "Bold move.\n";
-        }
-        else
-        {
-            return "Wise choice.\n";
-        }
-    }
-
     public void run()
     {        
         //get market state now
@@ -548,7 +535,7 @@ public class AetherTrader extends TimerTask
 
         marketState = getMarketState(percentChange);
         marketHistory.push(marketState);
-        System.out.println(String.format("[%s]: %s (%+.2f%%)", dateFormat.format(new Date()), marketState, percentChange));
+        System.out.print(String.format("[%4s]: %s (%+.2f%%)", dateFormat.format(new Date()), marketState, percentChange));
 
         // TODO decide what to do
         tradingState = doAction();
@@ -578,79 +565,110 @@ public class AetherTrader extends TimerTask
     {
         JSONObject btcData = getBTCData();
         JSONObject bal;
+        TradingState nextState = TradingState.UNKNOWN;
+
         if (priceAtLastTransaction == -1)
         {
             priceAtLastTransaction = btcData.getDouble("last");
         }
 
+        Trend currentTrend = predictMarket();
+
+        System.out.print(String.format(" | Action trend: %4s | %s -> ", currentTrend.name(), tradingState));
         switch (tradingState)
         {
             case HOLD_IN:
-                if (predictMarket() == Trend.UP)
+                if (currentTrend == Trend.UP)
                 {
+                    priceAtLastTransaction = btcData.getDouble("last");
+
                     bal = wallet.getBalance();
                     wallet.placeSellLimitOrder(bal.getBigDecimal("btc_available"), priceAtLastTransaction * (1 + PROFIT_MARGIN));
-                    System.out.println(String.format("[%s]: HOLD_IN -> LONG (Limit sell placed at €%.2f)", dateFormat.format(new Date()), priceAtLastTransaction * (1 + PROFIT_MARGIN)));
-                    return TradingState.LONG;
+                    System.out.print(String.format("LONG (Limit sell placed at €%.2f)", priceAtLastTransaction * (1 + PROFIT_MARGIN)));
+                    nextState = TradingState.LONG;
+                }
+                else
+                {
+                    nextState = tradingState;
                 }
                 break;
             case LONG:
                 btcData = getBTCData();
-                if (predictMarket() == Trend.DOWN || btcData.getDouble("last") > priceAtLastTransaction * (1 - PROFIT_MARGIN))
+
+                // Panic-close LONG position, predicted trend is down or last price lower than one PROFIT_MARGIN BELOW our position
+                if (currentTrend == Trend.DOWN || btcData.getDouble("last") < priceAtLastTransaction * (1 - PROFIT_MARGIN))
                 {
-                    // if last price is a whole margin below price when last order placed (wrong direction)
-                    // Trend is down when in a long position
                     JSONObject cancelledOrder = wallet.cancelOrder(lastOrderID);
                     if (cancelledOrder.getString("status").equals("success"))
                     {
                         bal = wallet.getBalance();
                         JSONObject o = wallet.placeSellInstantOrder(bal.getBigDecimal("btc_available"));
-                        System.out.println(String.format("[%s]: LONG -> HOLD_IN (Instant sell placed at €%.2f)", dateFormat.format(new Date()), o.getDouble("price")));
-                        return TradingState.HOLD_IN;
+                        System.out.print(String.format("HOLD_IN (Instant sell placed at €%.2f)", o.getDouble("price")));
+                        nextState =  TradingState.HOLD_IN;
                     }
                     else
                     {
-                        System.out.println("WARNING: Unable to cancel limit sell order. Market falling while in a LONG position.");
-                        System.out.println(String.format("[%s]: LONG -> LONG (Failed to cancel order)", dateFormat.format(new Date())));
-                        return TradingState.LONG;
+                        System.out.println(String.format("LONG (Failed to cancel order)"));
+                        System.out.print("WARNING: Unable to cancel limit sell order. Market falling while in a LONG position.");
+                        nextState =  TradingState.LONG;
                     }
+                }
+                else
+                {
+                    nextState = tradingState;
                 }
                 break;
             case HOLD_OUT:
-                if (predictMarket() == Trend.DOWN)
+                if (currentTrend == Trend.DOWN)
                 {
+                    priceAtLastTransaction = btcData.getDouble("last");
+                    
                     bal = wallet.getBalance();
                     wallet.placeBuyLimitOrder(bal.getBigDecimal("btc_available"), priceAtLastTransaction * (1 - PROFIT_MARGIN));
-                    System.out.println(String.format("[%s]: HOLD_OUT -> SHORT (Limit buy placed at €%.2d)", dateFormat.format(new Date()), priceAtLastTransaction * (1 - PROFIT_MARGIN)));
-                    return TradingState.SHORT;
+                    System.out.print(String.format("SHORT (Limit buy placed at €%.2d)", priceAtLastTransaction * (1 - PROFIT_MARGIN)));
+                    nextState =  TradingState.SHORT;
+                }
+                else
+                {
+                    nextState = tradingState;
                 }
                 break;
             case SHORT:
                 btcData = getBTCData();
-                if (predictMarket() == Trend.UP || btcData.getDouble("last") > priceAtLastTransaction * (1 + PROFIT_MARGIN))
+                // Panic-close SHORT position, predicted trend is UP or last price higher than one PROFIT_MARGIN ABOVE our position
+                if (currentTrend == Trend.UP || btcData.getDouble("last") > priceAtLastTransaction * (1 + PROFIT_MARGIN))
                 {
-                    // if last price is a whole margin above price when last order placed (wrong direction)
-                    // Trend is up when in a short position
                     JSONObject cancelledOrder = wallet.cancelOrder(lastOrderID);
                     if (cancelledOrder.getString("status").equals("success"))
                     {
                         bal = wallet.getBalance();
                         JSONObject o = wallet.placeBuyInstantOrder(bal.getBigDecimal("eur_available"));
-                        System.out.println(String.format("[%s]: SHORT -> HOLD_OUT (Instant buy placed at €%.2d)", dateFormat.format(new Date()), o.getDouble("price")));
-                        return TradingState.HOLD_OUT;
+                        System.out.print(String.format("HOLD_OUT (Instant buy placed at €%.2d)", o.getDouble("price")));
+                        nextState =  TradingState.HOLD_OUT;
                     }
                     else
                     {
-                        System.out.println("WARNING: Unable to cancel limit buy order. Market rising while in a SHORT position.");
-                        System.out.println(String.format("[%s]: SHORT -> SHORT (Failed to cancel order)", dateFormat.format(new Date())));
-                        return TradingState.SHORT;
+                        System.out.println(String.format("SHORT (Failed to cancel order)"));
+                        System.out.print("WARNING: Unable to cancel limit buy order. Market rising while in a SHORT position.");
+                        nextState =  TradingState.SHORT;
                     }  
+                }
+                else
+                {
+                    nextState = tradingState;
                 }
                 break;
             default:
+                System.out.print(String.format("%s (Unsure what has happened to reach here)", tradingState));
                 break;
         }
-        return TradingState.UNKNOWN;
+
+        if (nextState == tradingState)
+        {
+            System.out.print(String.format("%s", nextState));
+        }
+        System.out.println();
+        return nextState;
     }
 
     /**
@@ -660,21 +678,72 @@ public class AetherTrader extends TimerTask
      */
     private Trend predictMarket()
     {
+        int overall = 0;
+        boolean allUp = true;
+        boolean allDw  = true;
+
+        MarketState last = null;
+        for (MarketState ms : marketHistory)
+        {
+            if (marketHistory.indexOf(ms) != 0)
+            {
+                if (allUp && ms.v < last.v)
+                {
+                    allUp = false;
+                }
+                else if (allDw && ms.v > last.v)
+                {
+                    allDw = false;
+                }
+            }
+
+            // TODO detect V shape and it's skew (e.g. steep drop but prolonged rise vice versa)   
+
+            switch (ms)
+            {
+                case VOLATILE_UP:
+                    overall *= 1.25;
+                    break;
+                case UUP:
+                    overall += 2;
+                    break;
+                case UP:
+                    overall += 1;
+                    break;
+                case FLAT:
+                    overall *= 0.75;
+                    break;
+                case DW:
+                    overall -= 1;
+                    break;
+                case DDW:
+                    overall -= 2;
+                    break;
+                case VOLATILE_DW:
+                    overall *= 1.25;
+                    break;
+                default:
+                    break;
+            }
+            last = ms;
+        }
+        
+        double decider = (overall * OVERALL_TREND_WEIGHT) + (((allUp ? 1 : 0) + (allDw ? -1 : 0)) * ALL_UP_DW_WEIGHT);
+
         if (marketHistory.contains(MarketState.UNKNOWN))
         {
             return Trend.FLAT;
         }
         
-        if (marketState == MarketState.UP || marketState == MarketState.UUP)
+        if (decider > 0)
         {
             return Trend.UP;
         }
-        else if (marketState == MarketState.DW || marketState == MarketState.DDW)
+        else if (decider < 0)
         {
             return Trend.DOWN;
         }
         
-        // TODO look at marketHistory
         return null;
     }
 
@@ -760,6 +829,9 @@ public class AetherTrader extends TimerTask
     /**
      * Calculates the percentage difference in price over a given time period.
      * 
+     * Each percentage represents the change in price over the length of time specified by <code>duration</code> as a
+     * simple sum. The granularity is definted by <code>timeStep</code>.
+     * 
      * @param timeStep The granularity of calculations in seconds
      * @param duration The number of <code>timeSteps</code> back to include in calculation
      * @return The percentage change, postive if up, negative if down
@@ -797,7 +869,7 @@ public class AetherTrader extends TimerTask
     }
 
     /**
-     * Gets the current market state from the percentage change
+     * Gets the current market state from the percentage change.
      * 
      * @param percent Change in market
      * @return The observed <code>MarketState</code>
@@ -1008,6 +1080,36 @@ public class AetherTrader extends TimerTask
     {
         return isAutotrading;
     }
+
+    /**
+     * Begins running thr automatic trading programme.
+     * 
+     * @return A comment reflecting on the user's decision to begin the programme or not. (WIP)
+     */
+    public String startAuto()
+    {
+        System.out.print("This feature is currently HEAVILY in development ");
+        System.out.print("and so will not trade on your actual and instead uses a test wallet. ");
+        System.out.println("Watch for future releases for a working trading programme.");
+        System.out.println("This will allow the program to begin trading automaticaly according to the in-built logic. Are you sure you want to continue?");
+        if (userConfirm())
+        {
+            wallet = new TestWallet(new BigDecimal(0.00338066), new BigDecimal(0));
+            isAutotrading = true;
+
+            // TODO setup: cancel current orders
+            tradingState = getTradingState();
+
+            autoTradingTimer = new Timer();
+            autoTradingTimer.scheduleAtFixedRate(this, 0, 60000);
+            return "Bold move.\n";
+        }
+        else
+        {
+            return "Wise choice.\n";
+        }
+    }
+
     //#endregion
 
     public static void main(String[] args)
