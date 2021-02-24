@@ -537,7 +537,7 @@ public class AetherTrader extends TimerTask
 
         marketState = getMarketState(percentChange);
         marketHistory.push(marketState);
-        System.out.print(String.format("[%4s]: %s (%+.2f%%, %-2dm)", dateFormat.format(new Date()), marketState, percentChange, (TIME_STEP / 60) * DURATION));
+        System.out.print(String.format("[%s]: %-4s (%+.2f%%, %-2dm)", dateFormat.format(new Date()), marketState, percentChange, (TIME_STEP / 60) * DURATION));
 
         // TODO Get better flow, this is nasty
         tradingState = doAction();
@@ -577,7 +577,7 @@ public class AetherTrader extends TimerTask
         Trend currentTrend = predictMarket();
 
         double percentOnPosition = ((btcData.getDouble("last") / priceAtLastTransaction) - 1) * 100;
-        System.out.print(String.format(" | Placed: €%.2f, Current: €%.2f (%+.2f%%) | Action trend: %4s | %s -> ", priceAtLastTransaction, btcData.getDouble("last"), percentOnPosition, currentTrend.name(), tradingState));
+        System.out.print(String.format(" | Ent: €%.2f, Cur: €%.2f (%+.2f%%) | Trend: %4s | %-7s -> ", priceAtLastTransaction, btcData.getDouble("last"), percentOnPosition, currentTrend.name(), tradingState));
         switch (tradingState)
         {
             case HOLD_IN:
@@ -586,9 +586,18 @@ public class AetherTrader extends TimerTask
                     priceAtLastTransaction = btcData.getDouble("last");
 
                     bal = wallet.getBalance();
-                    wallet.placeSellLimitOrder(bal.getBigDecimal("btc_available"), priceAtLastTransaction * (1 + PROFIT_MARGIN));
-                    System.out.print(String.format("LONG (Limit sell placed at €%.2f)", priceAtLastTransaction * (1 + PROFIT_MARGIN)));
+                    JSONObject o = wallet.placeSellLimitOrder(bal.getBigDecimal("btc_available"), priceAtLastTransaction * (1 + PROFIT_MARGIN));
+                    lastOrderID = o.getLong("id"); //only needed with TestWallet
+                    System.out.print(String.format("LONG (Limit sell placed at €%.2f)", o.getDouble("price")));
                     nextState = TradingState.LONG;
+                }
+                else if (currentTrend == Trend.DOWN && btcData.getDouble("last") < priceAtLastTransaction * (1 - PROFIT_MARGIN))
+                {
+                    bal = wallet.getBalance();
+                    JSONObject o = wallet.placeSellInstantOrder(bal.getBigDecimal("btc_available"));
+                    lastOrderID = o.getLong("id"); //only needed with TestWallet
+                    System.out.print(String.format("HOLD_OUT (Instant sell placed at €%.2f)", o.getDouble("price")));
+                    nextState = TradingState.HOLD_OUT;
                 }
                 else
                 {
@@ -604,9 +613,7 @@ public class AetherTrader extends TimerTask
                     JSONObject cancelledOrder = wallet.cancelOrder(lastOrderID);
                     if (cancelledOrder.getString("status").equals("success"))
                     {
-                        bal = wallet.getBalance();
-                        JSONObject o = wallet.placeSellInstantOrder(bal.getBigDecimal("btc_available"));
-                        System.out.print(String.format("HOLD_IN (Instant sell placed at €%.2f)", o.getDouble("price")));
+                        System.out.print(String.format("HOLD_IN (Order cancelled, LONG position closed)"));
                         nextState =  TradingState.HOLD_IN;
                     }
                     else
@@ -627,9 +634,18 @@ public class AetherTrader extends TimerTask
                     priceAtLastTransaction = btcData.getDouble("last");
                     
                     bal = wallet.getBalance();
-                    wallet.placeBuyLimitOrder(bal.getBigDecimal("btc_available"), priceAtLastTransaction * (1 - PROFIT_MARGIN));
-                    System.out.print(String.format("SHORT (Limit buy placed at €%.2d)", priceAtLastTransaction * (1 - PROFIT_MARGIN)));
+                    JSONObject o = wallet.placeBuyLimitOrder(bal.getBigDecimal("btc_available"), priceAtLastTransaction * (1 - PROFIT_MARGIN));
+                    lastOrderID = o.getLong("id"); //only needed with TestWallet
+                    System.out.print(String.format("SHORT (Limit buy placed at €%.2f)", o.getDouble("price")));
                     nextState =  TradingState.SHORT;
+                }
+                else if (currentTrend == Trend.UP && btcData.getDouble("last") > priceAtLastTransaction * (1 + PROFIT_MARGIN))
+                {
+                    bal = wallet.getBalance();
+                    JSONObject o = wallet.placeBuyInstantOrder(bal.getBigDecimal("eur_available"));
+                    lastOrderID = o.getLong("id"); //only needed with TestWallet
+                    System.out.print(String.format("HOLD_OUT (Instant buy placed at €%.2f)", o.getDouble("price")));
+                    nextState = TradingState.HOLD_IN;
                 }
                 else
                 {
@@ -644,9 +660,7 @@ public class AetherTrader extends TimerTask
                     JSONObject cancelledOrder = wallet.cancelOrder(lastOrderID);
                     if (cancelledOrder.getString("status").equals("success"))
                     {
-                        bal = wallet.getBalance();
-                        JSONObject o = wallet.placeBuyInstantOrder(bal.getBigDecimal("eur_available"));
-                        System.out.print(String.format("HOLD_OUT (Instant buy placed at €%.2d)", o.getDouble("price")));
+                        System.out.print(String.format("HOLD_OUT (Order cancelled, SHORT position closed)"));
                         nextState =  TradingState.HOLD_OUT;
                     }
                     else
@@ -746,8 +760,10 @@ public class AetherTrader extends TimerTask
         {
             return Trend.DOWN;
         }
-        
-        return null;
+        else
+        {
+            return Trend.FLAT;
+        }
     }
 
     //#endregion
@@ -859,7 +875,7 @@ public class AetherTrader extends TimerTask
             }
             
             float firstOpen = vals.getJSONObject(0).getFloat("open");
-            float lastClose = vals.getJSONObject(vals.length() - 1).getFloat("close");
+            //float lastClose = vals.getJSONObject(vals.length() - 1).getFloat("close");
             float percentChange = (diff / firstOpen) * 100;
             // System.out.println(String.format("BTC moved %+.2f%% in the last %d minutes.", percentChange, 60));
             // System.out.println(String.format("%.2f -> %.2f", firstOpen, lastClose));
