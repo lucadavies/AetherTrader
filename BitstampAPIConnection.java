@@ -52,9 +52,9 @@ public class BitstampAPIConnection
         {
             HttpClient client = HttpClient.newHttpClient();
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("https://" + urlHost + urlPath))
-                    .GET()
-                    .build();
+                .uri(URI.create("https://" + urlHost + urlPath))
+                .GET()
+                .build();
 
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
@@ -66,7 +66,8 @@ public class BitstampAPIConnection
 
             String resp = response.body();
             return resp;
-        } catch (Exception e)
+        }
+        catch (Exception e)
         {
             throw new RuntimeException(e);
         }
@@ -86,9 +87,9 @@ public class BitstampAPIConnection
         {
             HttpClient client = HttpClient.newHttpClient();
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("https://" + urlHost + urlPath))
-                    .GET()
-                    .build();
+                .uri(URI.create("https://" + urlHost + urlPath))
+                .GET()
+                .build();
 
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
@@ -100,7 +101,8 @@ public class BitstampAPIConnection
 
             String resp = response.body();
             return resp;
-        } catch (Exception e)
+        }
+        catch (Exception e)
         {
             throw new RuntimeException(e);
         }
@@ -132,15 +134,15 @@ public class BitstampAPIConnection
 
             HttpClient client = HttpClient.newHttpClient();
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("https://" + urlHost + urlPath))
-                    .POST(HttpRequest.BodyPublishers.ofString(payloadString))
-                    .setHeader("X-Auth", apiKey)
-                    .setHeader("X-Auth-Signature", signature)
-                    .setHeader("X-Auth-Nonce", nonce)
-                    .setHeader("X-Auth-Timestamp", timestamp)
-                    .setHeader("X-Auth-Version", version)
-                    .setHeader("Content-Type", contentType)
-                    .build();
+                .uri(URI.create("https://" + urlHost + urlPath))
+                .POST(HttpRequest.BodyPublishers.ofString(payloadString))
+                .setHeader("X-Auth", apiKey)
+                .setHeader("X-Auth-Signature", signature)
+                .setHeader("X-Auth-Nonce", nonce)
+                .setHeader("X-Auth-Timestamp", timestamp)
+                .setHeader("X-Auth-Version", version)
+                .setHeader("Content-Type", contentType)
+                .build();
 
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
@@ -164,7 +166,8 @@ public class BitstampAPIConnection
             }
 
             return response.body();
-        } catch (Exception e)
+        }
+        catch (Exception e)
         {
             throw new RuntimeException(e);
         }
@@ -202,15 +205,15 @@ public class BitstampAPIConnection
 
             HttpClient client = HttpClient.newHttpClient();
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("https://" + urlHost + urlPath))
-                    .POST(HttpRequest.BodyPublishers.ofString(payloadString))
-                    .setHeader("X-Auth", apiKey)
-                    .setHeader("X-Auth-Signature", signature)
-                    .setHeader("X-Auth-Nonce", nonce)
-                    .setHeader("X-Auth-Timestamp", timestamp)
-                    .setHeader("X-Auth-Version", version)
-                    .setHeader("Content-Type", contentType)
-                    .build();
+                .uri(URI.create("https://" + urlHost + urlPath))
+                .POST(HttpRequest.BodyPublishers.ofString(payloadString))
+                .setHeader("X-Auth", apiKey)
+                .setHeader("X-Auth-Signature", signature)
+                .setHeader("X-Auth-Nonce", nonce)
+                .setHeader("X-Auth-Timestamp", timestamp)
+                .setHeader("X-Auth-Version", version)
+                .setHeader("Content-Type", contentType)
+                .build();
 
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
@@ -234,7 +237,8 @@ public class BitstampAPIConnection
             }
 
             return response.body();
-        } catch (Exception e)
+        }
+        catch (Exception e)
         {
             throw new RuntimeException(e);
         }
