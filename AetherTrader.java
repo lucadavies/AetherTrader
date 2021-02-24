@@ -535,7 +535,7 @@ public class AetherTrader extends TimerTask
 
         marketState = getMarketState(percentChange);
         marketHistory.push(marketState);
-        System.out.print(String.format("[%s]: %s (%+.2f%%)", dateFormat.format(new Date()), marketState, percentChange));
+        System.out.print(String.format("[%4s]: %s (%+.2f%%)", dateFormat.format(new Date()), marketState, percentChange));
 
         // TODO decide what to do
         tradingState = doAction();
@@ -574,12 +574,14 @@ public class AetherTrader extends TimerTask
 
         Trend currentTrend = predictMarket();
 
-        System.out.print(String.format(" | Action trend: %s | %s -> ", currentTrend.name(), tradingState));
+        System.out.print(String.format(" | Action trend: %4s | %s -> ", currentTrend.name(), tradingState));
         switch (tradingState)
         {
             case HOLD_IN:
                 if (currentTrend == Trend.UP)
                 {
+                    priceAtLastTransaction = btcData.getDouble("last");
+
                     bal = wallet.getBalance();
                     wallet.placeSellLimitOrder(bal.getBigDecimal("btc_available"), priceAtLastTransaction * (1 + PROFIT_MARGIN));
                     System.out.print(String.format("LONG (Limit sell placed at €%.2f)", priceAtLastTransaction * (1 + PROFIT_MARGIN)));
@@ -619,6 +621,8 @@ public class AetherTrader extends TimerTask
             case HOLD_OUT:
                 if (currentTrend == Trend.DOWN)
                 {
+                    priceAtLastTransaction = btcData.getDouble("last");
+                    
                     bal = wallet.getBalance();
                     wallet.placeBuyLimitOrder(bal.getBigDecimal("btc_available"), priceAtLastTransaction * (1 - PROFIT_MARGIN));
                     System.out.print(String.format("SHORT (Limit buy placed at €%.2d)", priceAtLastTransaction * (1 - PROFIT_MARGIN)));
@@ -692,6 +696,8 @@ public class AetherTrader extends TimerTask
                     allDw = false;
                 }
             }
+
+            // TODO detect V shape and it's skew (e.g. steep drop but prolonged rise vice versa)   
 
             switch (ms)
             {
