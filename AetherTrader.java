@@ -87,6 +87,8 @@ public class AetherTrader extends TimerTask
     private Timer autoTradingTimer;
     private boolean isAutotrading = false;
 
+    private final int TIME_STEP = 60;
+    private final int DURATION = 60;
     private final double PROFIT_MARGIN = 0.015;
     private final double OVERALL_TREND_WEIGHT = 1.0;
     private final double ALL_UP_DW_WEIGHT = 1.5;
@@ -527,7 +529,7 @@ public class AetherTrader extends TimerTask
     public void run()
     {        
         //get market state now
-        float percentChange = calculatePercentChange(60, 60);
+        float percentChange = calculatePercentChange(TIME_STEP, DURATION);
         if (percentChange == -999)
         {
             return;
@@ -535,9 +537,9 @@ public class AetherTrader extends TimerTask
 
         marketState = getMarketState(percentChange);
         marketHistory.push(marketState);
-        System.out.print(String.format("[%4s]: %s (%+.2f%%)", dateFormat.format(new Date()), marketState, percentChange));
+        System.out.print(String.format("[%4s]: %s (%+.2f%%, %-2dm)", dateFormat.format(new Date()), marketState, percentChange, (TIME_STEP / 60) * DURATION));
 
-        // TODO decide what to do
+        // TODO Get better flow, this is nasty
         tradingState = doAction();
     }
 
@@ -574,7 +576,8 @@ public class AetherTrader extends TimerTask
 
         Trend currentTrend = predictMarket();
 
-        System.out.print(String.format(" | Action trend: %4s | %s -> ", currentTrend.name(), tradingState));
+        double percentOnPosition = ((btcData.getDouble("last") / priceAtLastTransaction) - 1) * 100;
+        System.out.print(String.format(" | Placed: €%.2f, Current: €%.2f (%+.2f%%) | Action trend: %4s | %s -> ", priceAtLastTransaction, btcData.getDouble("last"), percentOnPosition, currentTrend.name(), tradingState));
         switch (tradingState)
         {
             case HOLD_IN:
