@@ -657,7 +657,7 @@ public class AetherTrader extends TimerTask
                     bal = wallet.getBalance();
                     JSONObject o = wallet.placeBuyInstantOrder(bal.getBigDecimal("eur_available"));
                     lastOrderID = o.getLong("id"); //only needed with TestWallet
-                    System.out.print(String.format("HOLD_OUT (Instant buy placed at €%.2f)", o.getDouble("price")));
+                    System.out.print(String.format("HOLD_IN (Instant buy placed at €%.2f)", o.getDouble("price")));
                     nextState = TradingState.HOLD_IN;
                 }
                 else
