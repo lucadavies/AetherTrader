@@ -1,4 +1,5 @@
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -19,7 +20,7 @@ public class TestWallet extends TimerTask
     ArrayList<JSONObject> orders = new ArrayList<JSONObject>();
     long nextOrderId = 0;
 
-    private SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM/yy hh:mm:ss");
+    private SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM/yy hh:mm");
     private BitstampAPIConnection conn = new BitstampAPIConnection("key", "keySecret");
     private Timer orderProcessTimer;
 
@@ -55,7 +56,7 @@ public class TestWallet extends TimerTask
         balance.put("eur_available", eur_available);
         balance.put("eur_balance", eur_balance);
         BigDecimal value = balance.getBigDecimal("eur_balance").add(balance.getBigDecimal("btc_balance").multiply(getBTCData().getBigDecimal("last")));
-        BigDecimal valueBTC = balance.getBigDecimal("btc_balance").add(balance.getBigDecimal("eur_balance").divide(getBTCData().getBigDecimal("last")));
+        BigDecimal valueBTC = balance.getBigDecimal("btc_balance").add(balance.getBigDecimal("eur_balance").divide(getBTCData().getBigDecimal("last"), RoundingMode.FLOOR));
         balance.put("value", value);
         balance.put("value_btc", valueBTC);
         return balance;
@@ -135,7 +136,7 @@ public class TestWallet extends TimerTask
             order.put("status", "success");
             orders.add(order);
             ordersPlaced++;
-            btc_available.subtract(amt);
+            btc_available = btc_available.subtract(amt);
             return order;
         }
         else
@@ -229,6 +230,7 @@ public class TestWallet extends TimerTask
                 if (data.getDouble("last") <= order.getDouble("price"))
                 {
                     btc_balance = btc_balance.add(order.getBigDecimal("amount"));
+                    eur_balance = eur_balance.subtract(order.getBigDecimal("amount").multiply(new BigDecimal(order.getDouble("price"))));
                     indexes.add(orders.indexOf(order));
                 }
             }
@@ -237,16 +239,27 @@ public class TestWallet extends TimerTask
                 if (data.getDouble("last") >= order.getDouble("price"))
                 {
                     btc_balance = btc_balance.subtract(order.getBigDecimal("amount"));
+                    eur_balance = eur_balance.add(order.getBigDecimal("amount").multiply(new BigDecimal(order.getDouble("price"))));
                     indexes.add(orders.indexOf(order));
                 } 
             }
         }
         for (int i : indexes)
         {
-            System.out.println(String.format("[%s]: order %d executed at %.2f", dateFormat.format(new Date()), orders.get(i).getLong("id"), orders.get(i).getDouble("price")));
+            System.out.println(String.format("[%s]: Order %d executed at €%.2f", dateFormat.format(new Date()), orders.get(i).getLong("id"), orders.get(i).getDouble("price")));
             orders.remove(i);
             ordersExecuted++;
         }
+
+        roundBalances();
+    }
+
+    private void roundBalances()
+    {
+        btc_available = btc_available.setScale(10, RoundingMode.FLOOR);
+        btc_balance = btc_balance.setScale(10, RoundingMode.FLOOR);
+        eur_available = eur_available.setScale(10, RoundingMode.FLOOR);
+        eur_balance = eur_balance.setScale(10, RoundingMode.FLOOR);
     }
 
     public void close()
@@ -260,6 +273,6 @@ public class TestWallet extends TimerTask
 
     public String toString()
     {
-        return String.format("{P:%2s, E:%2s, C:%2s (Value: %.8fBTC)}", ordersPlaced, ordersExecuted, ordersCancelled, getBalance().get("value_btc"));
+        return String.format("{P:%2s, E:%2s, C:%2s, Value: %.8fBTC (€%.2f))}", ordersPlaced, ordersExecuted, ordersCancelled, getBalance().getBigDecimal("value_btc"), getBalance().getBigDecimal("value"));
     }
 }
