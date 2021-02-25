@@ -584,6 +584,7 @@ public class AetherTrader extends TimerTask
             case HOLD_IN:
                 if (currentTrend == Trend.UP)
                 {
+                    // Trend is up, place limit sell assuming sustained rise
                     priceAtLastTransaction = btcData.getDouble("last");
 
                     bal = wallet.getBalance();
@@ -594,6 +595,7 @@ public class AetherTrader extends TimerTask
                 }
                 else if (currentTrend == Trend.DOWN && btcData.getDouble("last") < priceAtLastTransaction * (1 - PROFIT_MARGIN))
                 {
+                    // Panic-sell out, trend is down and current price is less than PROFIT_MARGIN BELOW our position
                     bal = wallet.getBalance();
                     JSONObject o = wallet.placeSellInstantOrder(bal.getBigDecimal("btc_available"));
                     lastOrderID = o.getLong("id"); //only needed with TestWallet
@@ -644,6 +646,7 @@ public class AetherTrader extends TimerTask
             case HOLD_OUT:
                 if (currentTrend == Trend.DOWN)
                 {
+                    // Trend is down, place limit buy assuming sustained drop
                     priceAtLastTransaction = btcData.getDouble("last");
                     
                     bal = wallet.getBalance();
@@ -654,6 +657,7 @@ public class AetherTrader extends TimerTask
                 }
                 else if (currentTrend == Trend.UP && btcData.getDouble("last") > priceAtLastTransaction * (1 + PROFIT_MARGIN))
                 {
+                    // Panic-buy in, trend is up and current price is more than PROFIT_MARGIN ABOVE our position
                     bal = wallet.getBalance();
                     JSONObject o = wallet.placeBuyInstantOrder(bal.getBigDecimal("eur_available"));
                     lastOrderID = o.getLong("id"); //only needed with TestWallet
