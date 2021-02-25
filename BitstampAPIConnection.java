@@ -60,7 +60,8 @@ public class BitstampAPIConnection
 
             if (response.statusCode() != 200)
             {
-                System.out.println("Error got response code " + response.statusCode());
+                // TODO be able to cope with this (ish, e.g. timeouts)
+                System.out.println("Error: got response code " + response.statusCode());
                 throw new RuntimeException("Status code not 200");
             }
 
