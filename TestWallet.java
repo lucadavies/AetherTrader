@@ -22,6 +22,10 @@ public class TestWallet extends TimerTask
     private BitstampAPIConnection conn = new BitstampAPIConnection("key", "keySecret");
     private Timer orderProcessTimer;
 
+    private int ordersPlaced = 0;
+    private int ordersExecuted = 0;
+    private int ordersCancelled = 0; 
+
     public TestWallet(BigDecimal btc, BigDecimal eur)
     {
         btc_available = btc;
@@ -71,6 +75,9 @@ public class TestWallet extends TimerTask
             eur_available.add(amt.multiply(btcData.getBigDecimal("last")));
             eur_balance.add(amt.multiply(btcData.getBigDecimal("last")));
 
+            ordersPlaced++;
+            ordersExecuted++;
+
             return order;
         }
         else
@@ -99,6 +106,9 @@ public class TestWallet extends TimerTask
             eur_available.subtract(amt);
             eur_balance.subtract(amt);
 
+            ordersPlaced++;
+            ordersExecuted++;
+
             return order;
         }
         else
@@ -121,6 +131,7 @@ public class TestWallet extends TimerTask
             order.put("type", 1);
             order.put("status", "success");
             orders.add(order);
+            ordersPlaced++;
             btc_available.subtract(amt);
             return order;
         }
@@ -144,6 +155,7 @@ public class TestWallet extends TimerTask
             order.put("type", 0);
             order.put("stauts", "success");
             orders.add(order);
+            ordersPlaced++;
             eur_available = eur_available.subtract(order.getBigDecimal("amount").multiply(order.getBigDecimal("price")));
             return order;
         }
@@ -182,6 +194,7 @@ public class TestWallet extends TimerTask
             JSONObject success = new JSONObject(orders.get(index));
             success.put("status", "success");
             orders.remove(index);
+            ordersCancelled++;
             return success;
         }
         else
@@ -220,6 +233,7 @@ public class TestWallet extends TimerTask
         {
             System.out.println(String.format("[%s]: order %d executed at %.2f", dateFormat.format(new Date()), orders.get(i).getLong("id"), orders.get(i).getDouble("price")));
             orders.remove(i);
+            ordersExecuted++;
         }
     }
 
@@ -230,5 +244,10 @@ public class TestWallet extends TimerTask
             orderProcessTimer.cancel();
             orderProcessTimer.purge();
         }
+    }
+
+    public String toString()
+    {
+        return String.format("{P:%2s, E:%2s, C:%2s (Value: €%.2f)}", ordersPlaced, ordersExecuted, ordersCancelled, getBalance().get("value"));
     }
 }
