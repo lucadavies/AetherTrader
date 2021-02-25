@@ -5,6 +5,7 @@ import java.util.Date;
 import java.util.Timer;
 import java.util.TimerTask;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 // TODO simulate trading fee!!!!
@@ -54,7 +55,9 @@ public class TestWallet extends TimerTask
         balance.put("eur_available", eur_available);
         balance.put("eur_balance", eur_balance);
         BigDecimal value = balance.getBigDecimal("eur_balance").add(balance.getBigDecimal("btc_balance").multiply(getBTCData().getBigDecimal("last")));
+        BigDecimal valueBTC = balance.getBigDecimal("btc_balance").add(balance.getBigDecimal("eur_balance").divide(getBTCData().getBigDecimal("last")));
         balance.put("value", value);
+        balance.put("value_btc", valueBTC);
         return balance;
     }
 
@@ -206,13 +209,24 @@ public class TestWallet extends TimerTask
         }
     }
 
+    public JSONObject getOpenOrders()
+    {
+        JSONArray jOrders = new JSONArray();
+        jOrders.put(orders);
+        JSONObject result = new JSONObject();
+
+        result.put("status", "success");
+        result.put("orders", jOrders);
+        return result;
+    }
+
     public void run()
     {
         JSONObject data = getBTCData();
         ArrayList<Integer> indexes = new ArrayList<Integer>();
         for (JSONObject order : orders)
         {
-            if (order.getInt("type") == 0)
+            if (order.getInt("type") == 0) // buy
             {
                 if (data.getDouble("last") <= order.getDouble("price"))
                 {
@@ -220,7 +234,7 @@ public class TestWallet extends TimerTask
                     indexes.add(orders.indexOf(order));
                 }
             }
-            else if (order.getInt("type") == 1)
+            else if (order.getInt("type") == 1) // sell
             {
                 if (data.getDouble("last") >= order.getDouble("price"))
                 {
@@ -248,6 +262,6 @@ public class TestWallet extends TimerTask
 
     public String toString()
     {
-        return String.format("{P:%2s, E:%2s, C:%2s (Value: €%.2f)}", ordersPlaced, ordersExecuted, ordersCancelled, getBalance().get("value"));
+        return String.format("{P:%2s, E:%2s, C:%2s (Value: %.8fBTC)}", ordersPlaced, ordersExecuted, ordersCancelled, getBalance().get("value_btc"));
     }
 }
