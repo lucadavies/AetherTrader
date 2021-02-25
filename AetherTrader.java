@@ -575,9 +575,10 @@ public class AetherTrader extends TimerTask
         }
 
         Trend currentTrend = predictMarket();
-
+        
         double percentOnPosition = ((btcData.getDouble("last") / priceAtLastTransaction) - 1) * 100;
         System.out.print(String.format(" | Ent: €%.2f, Cur: €%.2f (%+.2f%%) | Trend: %4s | %-7s -> ", priceAtLastTransaction, btcData.getDouble("last"), percentOnPosition, currentTrend.name(), tradingState));
+        // TODO there's "right" way to exit LONG/SHORT positions...
         switch (tradingState)
         {
             case HOLD_IN:
@@ -684,6 +685,7 @@ public class AetherTrader extends TimerTask
         {
             System.out.print(String.format("%s", nextState));
         }
+        System.out.print(" | " + wallet.toString());
         System.out.println();
         return nextState;
     }
