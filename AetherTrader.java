@@ -89,7 +89,7 @@ public class AetherTrader extends TimerTask
 
     private final int TIME_STEP = 60;
     private final int DURATION = 60;
-    private final double PROFIT_MARGIN = 0.015;
+    private final double PROFIT_MARGIN = 0.002; //TODO only for testing
     private final double OVERALL_TREND_WEIGHT = 1.0;
     private final double ALL_UP_DW_WEIGHT = 1.5;
     private TestWallet wallet;
@@ -569,16 +569,16 @@ public class AetherTrader extends TimerTask
         JSONObject bal;
         TradingState nextState = TradingState.UNKNOWN;
 
-        if (priceAtLastTransaction == -1)
+        if (priceAtLastTransaction == -1) // If programme just started, take last price as last transaction
         {
             priceAtLastTransaction = btcData.getDouble("last");
         }
 
         Trend currentTrend = predictMarket();
+        JSONObject orderData;
         
         double percentOnPosition = ((btcData.getDouble("last") / priceAtLastTransaction) - 1) * 100;
-        System.out.print(String.format(" | Ent: €%.2f, Cur: €%.2f (%+.2f%%) | Trend: %4s | %-7s -> ", priceAtLastTransaction, btcData.getDouble("last"), percentOnPosition, currentTrend.name(), tradingState));
-        // TODO there's "right" way to exit LONG/SHORT positions...
+        System.out.print(String.format(" | Ent: €%.2f, Cur: €%.2f (%+.2f%%) | Trend: %4s | %-8s -> ", priceAtLastTransaction, btcData.getDouble("last"), percentOnPosition, currentTrend.name(), tradingState));
         switch (tradingState)
         {
             case HOLD_IN:
@@ -606,27 +606,39 @@ public class AetherTrader extends TimerTask
                 }
                 break;
             case LONG:
-                btcData = getBTCData();
+                orderData = wallet.getOpenOrders();
+                if (orderData.getString("status").equals("success"))
+                {
+                    if (orderData.getJSONArray("orders").length() > 0) // Long position still open
+                    {
+                        btcData = getBTCData();
 
-                // Panic-close LONG position, predicted trend is down or last price lower than one PROFIT_MARGIN BELOW our position
-                if (currentTrend == Trend.DOWN || btcData.getDouble("last") < priceAtLastTransaction * (1 - PROFIT_MARGIN))
-                {
-                    JSONObject cancelledOrder = wallet.cancelOrder(lastOrderID);
-                    if (cancelledOrder.getString("status").equals("success"))
-                    {
-                        System.out.print(String.format("HOLD_IN (Order cancelled, LONG position closed)"));
-                        nextState =  TradingState.HOLD_IN;
+                        // Panic-close LONG position, predicted trend is down or last price lower than one PROFIT_MARGIN BELOW our position
+                        if (currentTrend == Trend.DOWN || btcData.getDouble("last") < priceAtLastTransaction * (1 - PROFIT_MARGIN))
+                        {
+                            JSONObject cancelledOrder = wallet.cancelOrder(lastOrderID);
+                            if (cancelledOrder.getString("status").equals("success"))
+                            {
+                                System.out.print(String.format("HOLD_IN (Order cancelled, LONG position closed)"));
+                                nextState =  TradingState.HOLD_IN;
+                            }
+                            else
+                            {
+                                System.out.println(String.format("LONG (Failed to cancel order)"));
+                                System.out.print("WARNING: Unable to cancel limit sell order. Market falling while in a LONG position.");
+                                nextState =  TradingState.LONG;
+                            }
+                        }
+                        else
+                        {
+                            nextState = tradingState;
+                        }
                     }
-                    else
+                    else // Long position closed (executed)
                     {
-                        System.out.println(String.format("LONG (Failed to cancel order)"));
-                        System.out.print("WARNING: Unable to cancel limit sell order. Market falling while in a LONG position.");
-                        nextState =  TradingState.LONG;
+                        System.out.print(String.format("HOLD_OUT (Limit sell executed)"));
+                        nextState = TradingState.HOLD_OUT;
                     }
-                }
-                else
-                {
-                    nextState = tradingState;
                 }
                 break;
             case HOLD_OUT:
@@ -654,37 +666,52 @@ public class AetherTrader extends TimerTask
                 }
                 break;
             case SHORT:
-                btcData = getBTCData();
-                // Panic-close SHORT position, predicted trend is UP or last price higher than one PROFIT_MARGIN ABOVE our position
-                if (currentTrend == Trend.UP || btcData.getDouble("last") > priceAtLastTransaction * (1 + PROFIT_MARGIN))
+                orderData = wallet.getOpenOrders();
+                if (orderData.getString("status").equals("success"))
                 {
-                    JSONObject cancelledOrder = wallet.cancelOrder(lastOrderID);
-                    if (cancelledOrder.getString("status").equals("success"))
+                    if (orderData.getJSONArray("orders").length() > 0) // Short position still open
                     {
-                        System.out.print(String.format("HOLD_OUT (Order cancelled, SHORT position closed)"));
-                        nextState =  TradingState.HOLD_OUT;
+                        btcData = getBTCData();
+
+                        // Panic-close SHORT position, predicted trend is UP or last price higher than one PROFIT_MARGIN ABOVE our position
+                        if (currentTrend == Trend.UP || btcData.getDouble("last") > priceAtLastTransaction * (1 + PROFIT_MARGIN))
+                        {
+                            JSONObject cancelledOrder = wallet.cancelOrder(lastOrderID);
+                            if (cancelledOrder.getString("status").equals("success"))
+                            {
+                                System.out.print(String.format("HOLD_OUT (Order cancelled, SHORT position closed)"));
+                                nextState =  TradingState.HOLD_OUT;
+                            }
+                            else
+                            {
+                                System.out.println(String.format("SHORT (Failed to cancel order)"));
+                                System.out.print("WARNING: Unable to cancel limit buy order. Market rising while in a SHORT position.");
+                                nextState =  TradingState.SHORT;
+                            }  
+                        }
+                        else
+                        {
+                            nextState = tradingState;
+                        }
                     }
-                    else
+                    else // Short position closed (executed)
                     {
-                        System.out.println(String.format("SHORT (Failed to cancel order)"));
-                        System.out.print("WARNING: Unable to cancel limit buy order. Market rising while in a SHORT position.");
-                        nextState =  TradingState.SHORT;
-                    }  
+                        System.out.print(String.format("HOLD_IN (Limit buy executed)"));
+                        nextState = TradingState.HOLD_IN;
+                    }
                 }
-                else
-                {
-                    nextState = tradingState;
-                }
+                
                 break;
             default:
                 System.out.print(String.format("%s (Unsure what has happened to reach here)", tradingState));
                 break;
         }
 
-        if (nextState == tradingState)
+        if (nextState == tradingState) // Print the lack of change in state
         {
             System.out.print(String.format("%s", nextState));
         }
+
         System.out.print(" | " + wallet.toString());
         System.out.println();
         return nextState;
