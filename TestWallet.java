@@ -211,10 +211,8 @@ public class TestWallet extends TimerTask
 
     public JSONObject getOpenOrders()
     {
-        JSONArray jOrders = new JSONArray();
-        jOrders.put(orders);
-        JSONObject result = new JSONObject();
-
+        JSONObject result = new JSONObject();        
+        JSONArray jOrders = new JSONArray(orders);
         result.put("status", "success");
         result.put("orders", jOrders);
         return result;
