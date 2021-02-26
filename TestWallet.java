@@ -56,7 +56,7 @@ public class TestWallet extends TimerTask
         balance.put("eur_available", eur_available);
         balance.put("eur_balance", eur_balance);
         BigDecimal value = balance.getBigDecimal("eur_balance").add(balance.getBigDecimal("btc_balance").multiply(getBTCData().getBigDecimal("last")));
-        BigDecimal valueBTC = balance.getBigDecimal("btc_balance").add(balance.getBigDecimal("eur_balance").divide(getBTCData().getBigDecimal("last"), RoundingMode.FLOOR));
+        BigDecimal valueBTC = balance.getBigDecimal("btc_balance").add(balance.getBigDecimal("eur_balance").divide(getBTCData().getBigDecimal("last"), RoundingMode.HALF_DOWN));
         balance.put("value", value);
         balance.put("value_btc", valueBTC);
         return balance;
@@ -74,10 +74,10 @@ public class TestWallet extends TimerTask
             order.put("type", 1);
             order.put("status", "success");
 
-            btc_available.subtract(amt);
-            btc_balance.subtract(amt);
-            eur_available.add(amt.multiply(btcData.getBigDecimal("last")));
-            eur_balance.add(amt.multiply(btcData.getBigDecimal("last")));
+            btc_available = btc_available.subtract(amt);
+            btc_balance = btc_balance.subtract(amt);
+            eur_available = eur_available.add(amt.multiply(btcData.getBigDecimal("last")));
+            eur_balance = eur_balance.add(amt.multiply(btcData.getBigDecimal("last")));
 
             ordersPlaced++;
             ordersExecuted++;
@@ -105,10 +105,10 @@ public class TestWallet extends TimerTask
             order.put("type", 1);
             order.put("status", "success");
 
-            btc_available.add(amt.divide(btcData.getBigDecimal("last")));
-            btc_balance.add(amt.divide(btcData.getBigDecimal("last")));
-            eur_available.subtract(amt);
-            eur_balance.subtract(amt);
+            btc_available = btc_available.add(amt.divide(btcData.getBigDecimal("last"), RoundingMode.HALF_DOWN));
+            btc_balance = btc_balance.add(amt.divide(btcData.getBigDecimal("last"), RoundingMode.HALF_DOWN));
+            eur_available = eur_available.subtract(amt);
+            eur_balance = eur_balance.subtract(amt);
 
             ordersPlaced++;
             ordersExecuted++;
@@ -250,16 +250,6 @@ public class TestWallet extends TimerTask
             orders.remove(i);
             ordersExecuted++;
         }
-
-        roundBalances();
-    }
-
-    private void roundBalances()
-    {
-        btc_available = btc_available.setScale(10, RoundingMode.FLOOR);
-        btc_balance = btc_balance.setScale(10, RoundingMode.FLOOR);
-        eur_available = eur_available.setScale(10, RoundingMode.FLOOR);
-        eur_balance = eur_balance.setScale(10, RoundingMode.FLOOR);
     }
 
     public void close()
