@@ -20,6 +20,8 @@ public class BitstampAPIConnection
     private String apiKey = "";
     private String apiKeySecret = "";
 
+    private final HttpClient client = HttpClient.newHttpClient();
+
     public BitstampAPIConnection()
     {
         loadKeys(defaultApiKeyPath, defaultApiKeySecretPath);
@@ -50,7 +52,6 @@ public class BitstampAPIConnection
 
         try
         {
-            HttpClient client = HttpClient.newHttpClient();
             HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("https://" + urlHost + urlPath))
                 .GET()
@@ -86,7 +87,6 @@ public class BitstampAPIConnection
 
         try
         {
-            HttpClient client = HttpClient.newHttpClient();
             HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("https://" + urlHost + urlPath))
                 .GET()
@@ -133,7 +133,6 @@ public class BitstampAPIConnection
             byte[] rawHmac = mac.doFinal(signature.getBytes());
             signature = new String(Hex.encodeHex(rawHmac)).toUpperCase();
 
-            HttpClient client = HttpClient.newHttpClient();
             HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("https://" + urlHost + urlPath))
                 .POST(HttpRequest.BodyPublishers.ofString(payloadString))
@@ -204,7 +203,6 @@ public class BitstampAPIConnection
             byte[] rawHmac = mac.doFinal(signature.getBytes());
             signature = new String(Hex.encodeHex(rawHmac)).toUpperCase();
 
-            HttpClient client = HttpClient.newHttpClient();
             HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("https://" + urlHost + urlPath))
                 .POST(HttpRequest.BodyPublishers.ofString(payloadString))
