@@ -1,6 +1,5 @@
 import java.io.IOError;
 import java.math.BigDecimal;
-import java.math.MathContext;
 import java.math.RoundingMode;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
@@ -95,7 +94,6 @@ public class AetherTrader extends TimerTask
     private final double PROFIT_MARGIN = 0.015;
     private final double OVERALL_TREND_WEIGHT = 1.0;
     private final double ALL_UP_DW_WEIGHT = 1.5;
-    private final MathContext mc = new MathContext(10, RoundingMode.HALF_DOWN);
     private TestWallet wallet;
 
     /**
@@ -306,11 +304,11 @@ public class AetherTrader extends TimerTask
     public String userSellInstantOrder()
     {
         System.out.println();
-        BigDecimal amt =  new BigDecimal(getUserInput("Amount (BTC): "), mc);
+        BigDecimal amt =  new BigDecimal(getUserInput("Amount (BTC): "));
 
         double price = getBTCPrice();
         String result;
-        System.out.println(String.format("Place sell instant order for %.8f BTC at ~€%.2f (Value: ~€%.2f)", amt, price, amt.multiply(new BigDecimal(price), mc)));
+        System.out.println(String.format("Place sell instant order for %.8f BTC at ~€%.2f (Value: ~€%.2f)", amt, price, amt.multiply(new BigDecimal(price))));
         if (userConfirm())
         {
             JSONObject sellOrder = placeSellInstantOrder(amt);
@@ -369,11 +367,11 @@ public class AetherTrader extends TimerTask
     public String userBuyInstantOrder()
     {
         System.out.println();
-        BigDecimal amt = new BigDecimal((getUserInput("Amount (EUR): ")), mc);
+        BigDecimal amt = new BigDecimal((getUserInput("Amount (EUR): ")));
 
         double price = getBTCPrice();
         String result;
-        System.out.println(String.format("Place buy instant order for %.8f BTC at ~€%.2f (Value: ~%.8fBTC)", amt, price, amt.divide(new BigDecimal(price), mc)));
+        System.out.println(String.format("Place buy instant order for %.8f BTC at ~€%.2f (Value: ~%.8fBTC)", amt, price, amt.divide(new BigDecimal(price), RoundingMode.HALF_DOWN)));
         if (userConfirm())
         {
             JSONObject buyOrder = placeBuyInstantOrder(amt);
@@ -434,11 +432,11 @@ public class AetherTrader extends TimerTask
     public String userSellLimitOrder()
     {
         System.out.println();
-        BigDecimal amt =  new BigDecimal(getUserInput("Amount (BTC): "), mc);
+        BigDecimal amt =  new BigDecimal(getUserInput("Amount (BTC): "));
         double price = Double.parseDouble(getUserInput("Price (EUR): "));
 
         String result;
-        System.out.println(String.format("Place sell limit order for %.8f BTC at €%.2f (Value: €%.2f)", amt, price, amt.multiply(new BigDecimal(price), mc)));
+        System.out.println(String.format("Place sell limit order for %.8f BTC at €%.2f (Value: €%.2f)", amt, price, amt.multiply(new BigDecimal(price))));
         if (userConfirm())
         {
             JSONObject sellOrder = placeSellLimitOrder(amt, price);
@@ -499,13 +497,13 @@ public class AetherTrader extends TimerTask
     public String userBuyLimitOrder()
     {
         System.out.println();
-        BigDecimal amt =  new BigDecimal(getUserInput("Amount (BTC): "), mc);
+        BigDecimal amt =  new BigDecimal(getUserInput("Amount (BTC): "));
         double price = Double.parseDouble(getUserInput("Price (EUR): "));
 
         JSONObject buyOrder = placeBuyLimitOrder(amt, price);
         String result;
 
-        System.out.println(String.format("Place buy limit order for %.8f BTC at €%.2f (Value: €%.2f)", amt, price, amt.multiply(new BigDecimal(price), mc)));
+        System.out.println(String.format("Place buy limit order for %.8f BTC at €%.2f (Value: €%.2f)", amt, price, amt.multiply(new BigDecimal(price))));
         if (userConfirm())
         {
             if (buyOrder.getString("status").equals("success"))
@@ -582,7 +580,7 @@ public class AetherTrader extends TimerTask
         JSONObject orderData;
         
         double percentOnPosition = ((btcData.getDouble("last") / priceAtLastTransaction) - 1) * 100;
-        System.out.print(String.format(" | Ent: €%.2f, Cur: €%.2f (%+.2f%%) | Trend: %4s (%.1f) | %-8s -> ", priceAtLastTransaction, btcData.getDouble("last"), percentOnPosition, currentTrend.name(), lastTrendVal, tradingState));
+        System.out.print(String.format(" | Ent: €%.2f, Cur: €%.2f (%+.2f%%) | Trend: %4s (%+.1f) | %-8s -> ", priceAtLastTransaction, btcData.getDouble("last"), percentOnPosition, currentTrend.name(), lastTrendVal, tradingState));
         switch (tradingState)
         {
             case HOLD_IN:
@@ -620,7 +618,7 @@ public class AetherTrader extends TimerTask
                         btcData = getBTCData();
 
                         // Panic-close LONG position, predicted trend is down or last price lower than one PROFIT_MARGIN BELOW our position
-                        if (currentTrend == Trend.DOWN || btcData.getDouble("last") < priceAtLastTransaction * (1 - PROFIT_MARGIN))
+                        if (currentTrend == Trend.DOWN && btcData.getDouble("last") < priceAtLastTransaction * (1 - PROFIT_MARGIN))
                         {
                             JSONObject cancelledOrder = wallet.cancelOrder(lastOrderID);
                             if (cancelledOrder.getString("status").equals("success"))
@@ -682,7 +680,7 @@ public class AetherTrader extends TimerTask
                         btcData = getBTCData();
 
                         // Panic-close SHORT position, predicted trend is UP or last price higher than one PROFIT_MARGIN ABOVE our position
-                        if (currentTrend == Trend.UP || btcData.getDouble("last") > priceAtLastTransaction * (1 + PROFIT_MARGIN))
+                        if (currentTrend == Trend.UP && btcData.getDouble("last") > priceAtLastTransaction * (1 + PROFIT_MARGIN))
                         {
                             JSONObject cancelledOrder = wallet.cancelOrder(lastOrderID);
                             if (cancelledOrder.getString("status").equals("success"))
@@ -912,8 +910,10 @@ public class AetherTrader extends TimerTask
             }
             
             float firstOpen = vals.getJSONObject(0).getFloat("open");
-            //float lastClose = vals.getJSONObject(vals.length() - 1).getFloat("close");
-            float percentChange = (diff / firstOpen) * 100;
+            float lastClose = vals.getJSONObject(vals.length() - 1).getFloat("close");
+            //float percentChange = (diff / firstOpen) * 100;
+            float percentChange = ((lastClose - firstOpen)/ firstOpen) * 100;
+
             // System.out.println(String.format("BTC moved %+.2f%% in the last %d minutes.", percentChange, 60));
             // System.out.println(String.format("%.2f -> %.2f", firstOpen, lastClose));
             return percentChange;
@@ -1150,7 +1150,7 @@ public class AetherTrader extends TimerTask
         System.out.println("This will allow the program to begin trading automaticaly according to the in-built logic. Are you sure you want to continue?");
         if (userConfirm())
         {
-            wallet = new TestWallet(new BigDecimal(0.00338066, mc), new BigDecimal(0, mc));
+            wallet = new TestWallet(new BigDecimal(0.00338066), new BigDecimal(0));
             isAutotrading = true;
 
             // TODO setup: cancel current orders
@@ -1202,6 +1202,7 @@ public class AetherTrader extends TimerTask
                     System.out.println(trader.startAuto());
                     break menu;
                 case 10:
+                    trader.calculatePercentChange(60, 60);
                     break;
                 case 0:
                     break menu;
