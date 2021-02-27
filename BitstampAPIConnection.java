@@ -13,13 +13,12 @@ import javax.crypto.spec.SecretKeySpec;
 import org.apache.commons.codec.binary.Hex;
 import org.json.JSONObject;
 
-// TODO Handle lack of keys to allow access to public methods only
 public class BitstampAPIConnection
 {
     private String defaultApiKeyPath = "key";
     private String defaultApiKeySecretPath = "secretKey";
-    private String apiKey = "";
-    private String apiKeySecret = "";
+    private String apiKey = null;
+    private String apiKeySecret = null;
 
     private final HttpClient client = HttpClient.newHttpClient();
 
@@ -42,7 +41,9 @@ public class BitstampAPIConnection
         }
         catch (IOException e)
         {
-            throw new RuntimeException("Error reading API keys. Please check your key files and try again.", e);
+            apiKey = null;
+            apiKeySecret = null;
+            System.out.println("Error reading API keys - account specific functions unavailable. Please check your key files and try again.");
         }
     }
     
@@ -131,6 +132,17 @@ public class BitstampAPIConnection
 
     public String sendPrivateRequest(String endPoint)
     {
+        // Check API Key and API Key Secret are present
+        if (this.apiKey == null || this.apiKeySecret == null)
+        {
+            JSONObject errorResp = new JSONObject();
+            errorResp.put("status", "failure");
+            errorResp.put("code", "N/A");
+            errorResp.put("error", "Missing API Key or API Key Secret");
+            System.out.println("Missing API Key or API Key Secret");
+            return errorResp.toString();
+        }
+
         String apiKey = String.format("%s %s", "BITSTAMP", this.apiKey);
         String apiKeySecret = this.apiKeySecret;
         String httpVerb = "POST";
@@ -204,6 +216,17 @@ public class BitstampAPIConnection
 
     public String sendPrivateRequest(String endPoint, String[] params)
     {
+        // Check API Key and API Key Secret are present
+        if (this.apiKey == null || this.apiKeySecret == null)
+        {
+            JSONObject errorResp = new JSONObject();
+            errorResp.put("status", "failure");
+            errorResp.put("code", "N/A");
+            errorResp.put("error", "Missing API Key or API Key Secret");
+            System.out.println("Missing API Key or API Key Secret");
+            return errorResp.toString();
+        }
+
         String apiKey = String.format("%s %s", "BITSTAMP", this.apiKey);
         String apiKeySecret = this.apiKeySecret;
         String httpVerb = "POST";
