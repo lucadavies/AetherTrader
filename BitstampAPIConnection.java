@@ -11,6 +11,7 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
 import org.apache.commons.codec.binary.Hex;
+import org.json.JSONObject;
 
 // TODO Handle lack of keys to allow access to public methods only
 public class BitstampAPIConnection
@@ -50,6 +51,7 @@ public class BitstampAPIConnection
         String urlHost = "www.bitstamp.net";
         String urlPath = endPoint;
 
+        HttpResponse<String> response = null;
         try
         {
             HttpRequest request = HttpRequest.newBuilder()
@@ -57,13 +59,16 @@ public class BitstampAPIConnection
                 .GET()
                 .build();
 
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() != 200)
             {
-                // TODO be able to cope with this (ish, e.g. timeouts)
+                JSONObject errorResp = new JSONObject();
+                errorResp.put("status", "failure");
+                errorResp.put("code", response.statusCode());
+                errorResp.put("error", "status code not 200");
                 System.out.println("Error: got response code " + response.statusCode());
-                throw new RuntimeException("Status code not 200");
+                return errorResp.toString();
             }
 
             String resp = response.body();
@@ -71,7 +76,12 @@ public class BitstampAPIConnection
         }
         catch (Exception e)
         {
-            throw new RuntimeException(e);
+            JSONObject errorResp = new JSONObject();
+            errorResp.put("status", "failure");
+            errorResp.put("code", response != null ? response.statusCode() : "N/A");
+            errorResp.put("error", "Non-matching signatures");
+            System.out.println("Request/response signatures do not match");
+            return errorResp.toString();
         }
     }
 
@@ -84,7 +94,8 @@ public class BitstampAPIConnection
         {
             urlPath += "&" + param;
         }
-
+        
+        HttpResponse<String> response = null;
         try
         {
             HttpRequest request = HttpRequest.newBuilder()
@@ -92,12 +103,16 @@ public class BitstampAPIConnection
                 .GET()
                 .build();
 
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() != 200)
             {
-                System.out.println("Error got response code " + response.statusCode());
-                throw new RuntimeException("Status code not 200");
+                JSONObject errorResp = new JSONObject();
+                errorResp.put("status", "failure");
+                errorResp.put("code", response.statusCode());
+                errorResp.put("error", "status code not 200");
+                System.out.println("Error: got response code " + response.statusCode());
+                return errorResp.toString();
             }
 
             String resp = response.body();
@@ -105,7 +120,12 @@ public class BitstampAPIConnection
         }
         catch (Exception e)
         {
-            throw new RuntimeException(e);
+            JSONObject errorResp = new JSONObject();
+            errorResp.put("status", "failure");
+            errorResp.put("code", response != null ? response.statusCode() : "N/A");
+            errorResp.put("error", "Non-matching signatures");
+            System.out.println("Request/response signatures do not match");
+            return errorResp.toString();
         }
     }
 
@@ -148,8 +168,12 @@ public class BitstampAPIConnection
 
             if (response.statusCode() != 200)
             {
-                System.out.println("Error got response code " + response.statusCode());
-                throw new RuntimeException("Status code not 200");
+                JSONObject errorResp = new JSONObject();
+                errorResp.put("status", "failure");
+                errorResp.put("code", response.statusCode());
+                errorResp.put("error", "status code not 200");
+                System.out.println("Error: got response code " + response.statusCode());
+                return errorResp.toString();
             }
 
             String serverSignature = response.headers().map().get("x-server-auth-signature").get(0);
@@ -162,7 +186,12 @@ public class BitstampAPIConnection
 
             if (!newSignature.equals(serverSignature))
             {
-                throw new RuntimeException("Signatures do not match");
+                JSONObject errorResp = new JSONObject();
+                errorResp.put("status", "failure");
+                errorResp.put("code", response.statusCode());
+                errorResp.put("error", "Non-matching signatures");
+                System.out.println("Request/response signatures do not match");
+                return errorResp.toString();
             }
 
             return response.body();
@@ -218,8 +247,12 @@ public class BitstampAPIConnection
 
             if (response.statusCode() != 200)
             {
-                System.out.println("Error got response code " + response.statusCode());
-                throw new RuntimeException("Status code not 200");
+                JSONObject errorResp = new JSONObject();
+                errorResp.put("status", "failure");
+                errorResp.put("code", response.statusCode());
+                errorResp.put("error", "status code not 200");
+                System.out.println("Error: got response code " + response.statusCode());
+                return errorResp.toString();
             }
 
             String serverSignature = response.headers().map().get("x-server-auth-signature").get(0);
@@ -232,7 +265,12 @@ public class BitstampAPIConnection
 
             if (!newSignature.equals(serverSignature))
             {
-                throw new RuntimeException("Signatures do not match");
+                JSONObject errorResp = new JSONObject();
+                errorResp.put("status", "failure");
+                errorResp.put("code", response.statusCode());
+                errorResp.put("error", "Non-matching signatures");
+                System.out.println("Request/response signatures do not match");
+                return errorResp.toString();
             }
 
             return response.body();
