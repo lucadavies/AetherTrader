@@ -2,6 +2,7 @@ import java.io.IOError;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.SimpleDateFormat;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
@@ -11,11 +12,8 @@ import java.util.TimerTask;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-/*  TODO ensure implementation of lastTransactionPrice (what happens on order cancel?)
-
+/*
     TODO Check calculatePercentagChange (data doesn't seem to match charts at all)
-    TODO Write logic for decision: predictMarket()
-    TODO Create framework for dry testing (save file with BTC holding amount?)
 */
 
 public class AetherTrader extends TimerTask
@@ -87,10 +85,11 @@ public class AetherTrader extends TimerTask
     private SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM/yy HH:mm");
     private Timer autoTradingTimer;
     private boolean isAutotrading = false;
-    private double lastTrendVal = 0; // TODO remove after testing
+    private double lastTrendVal = 0;
 
     private final int TIME_STEP = 60;
-    private final int DURATION = 60;
+    private final int STEPS = 60;
+    private final int MARKET_HISTORY_LENGTH = 20;
     private final double PROFIT_MARGIN = 0.015;
     private final double OVERALL_TREND_WEIGHT = 1.0;
     private final double ALL_UP_DW_WEIGHT = 1.5;
@@ -101,7 +100,7 @@ public class AetherTrader extends TimerTask
      * overlaps the majority of it's measurement period. As it stands, MarketStates are calculated at 1-minute
      * granularity for an hour. So a market history five long covers a time period of 1h5m only.
      */
-    private CircularList<MarketState> marketHistory = new CircularList<MarketState>(10);
+    private CircularList<MarketState> marketHistory;
 
     public AetherTrader()
     {
@@ -531,7 +530,7 @@ public class AetherTrader extends TimerTask
     public void run()
     {        
         //get market state now
-        float percentChange = calculatePercentChange(TIME_STEP, DURATION);
+        float percentChange = calculatePercentChange(TIME_STEP, STEPS, 0);
         if (percentChange == -999)
         {
             return;
@@ -539,7 +538,7 @@ public class AetherTrader extends TimerTask
 
         marketState = getMarketState(percentChange);
         marketHistory.push(marketState);
-        System.out.print(String.format("[%s]: %-4s (%+.2f%%, %-2dm)", dateFormat.format(new Date()), marketState, percentChange, (TIME_STEP / 60) * DURATION));
+        System.out.print(String.format("[%s]: %-4s (%+.2f%%, %-2dm)", dateFormat.format(new Date()), marketState, percentChange, (TIME_STEP / 60) * STEPS));
 
         // TODO Get better flow, this is nasty
         tradingState = doAction();
@@ -580,7 +579,7 @@ public class AetherTrader extends TimerTask
         JSONObject orderData;
         
         double percentOnPosition = ((btcData.getDouble("last") / priceAtLastTransaction) - 1) * 100;
-        System.out.print(String.format(" | Ent: €%.2f, Cur: €%.2f (%+.2f%%) | Trend: %4s (%+.1f) | %-8s -> ", priceAtLastTransaction, btcData.getDouble("last"), percentOnPosition, currentTrend.name(), lastTrendVal, tradingState));
+        System.out.print(String.format(" | Ent: €%.2f, Cur: €%.2f (%+.2f%%) | Trend: %4s (%+5.1f) | %-8s -> ", priceAtLastTransaction, btcData.getDouble("last"), percentOnPosition, currentTrend.name(), lastTrendVal, tradingState));
         switch (tradingState)
         {
             case HOLD_IN:
@@ -801,6 +800,21 @@ public class AetherTrader extends TimerTask
         }
     }
 
+    private void setUpMarketHistory()
+    {
+        marketHistory = new CircularList<MarketState>(MARKET_HISTORY_LENGTH);
+
+        float percentChange = 0;
+        long maxOffset = -MARKET_HISTORY_LENGTH * TIME_STEP ;
+        for (long offset = maxOffset; offset <= 0; offset += TIME_STEP )
+        {
+            percentChange = calculatePercentChange(TIME_STEP, STEPS, offset);
+            marketState = getMarketState(percentChange);
+            marketHistory.push(marketState);
+        } 
+        ;       
+    }
+
     //#endregion
 
     //#region Trading Utilities
@@ -823,12 +837,13 @@ public class AetherTrader extends TimerTask
      * @param limit Maximum number of results to return
      * @return JSONObject containing keys "status" and "data" (OHLC data)
      */
-    private JSONObject getOHLCData(int step, int limit)
+    private JSONObject getOHLCData(int step, int limit, long startTime)
     {
         String[] params = new String[]
         {
             "step=" + step,
-            "limit=" + limit
+            "limit=" + limit,
+            "start=" + startTime
         };
         JSONObject ohlcData = new JSONObject(conn.sendPublicRequest("/api/v2/ohlc/btceur/", params));
 
@@ -883,16 +898,17 @@ public class AetherTrader extends TimerTask
     /**
      * Calculates the percentage difference in price over a given time period.
      * 
-     * Each percentage represents the change in price over the length of time specified by <code>duration</code> as a
-     * simple sum. The granularity is definted by <code>timeStep</code>.
+     * Each percentage represents the change in price over the length of time spanned by <code>steps</code> number of
+     * <code>timeStep</code>s as a simple sum.
      * 
      * @param timeStep The granularity of calculations in seconds
-     * @param duration The number of <code>timeSteps</code> back to include in calculation
+     * @param steps The number of <code>timeSteps</code> back to include in calculation
+     * @param offset Number of seconds back to get results from
      * @return The percentage change, postive if up, negative if down
      */
-    private float calculatePercentChange(int timeStep, int duration)
+    private float calculatePercentChange(int timeStep, int steps, long offset)
     {
-        JSONObject data = getOHLCData(timeStep, duration); //one minute interval, for one hour back
+        JSONObject data = getOHLCData(timeStep, steps, Instant.now().getEpochSecond() - (timeStep * steps) - offset); //one minute interval, for one hour back, starting on hour ago
         if (data.getString("status").equals("success"))
         {
             float diff = 0;
@@ -1155,7 +1171,7 @@ public class AetherTrader extends TimerTask
 
             // TODO setup: cancel current orders
             tradingState = getTradingState();
-
+            setUpMarketHistory();
             autoTradingTimer = new Timer();
             autoTradingTimer.scheduleAtFixedRate(this, 0, 60000);
             return "Bold move.\n";
@@ -1202,7 +1218,6 @@ public class AetherTrader extends TimerTask
                     System.out.println(trader.startAuto());
                     break menu;
                 case 10:
-                    trader.calculatePercentChange(60, 60);
                     break;
                 case 0:
                     break menu;
