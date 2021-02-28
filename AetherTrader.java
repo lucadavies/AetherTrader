@@ -911,19 +911,18 @@ public class AetherTrader extends TimerTask
         JSONObject data = getOHLCData(timeStep, steps, Instant.now().getEpochSecond() - (timeStep * steps) - offset); //one minute interval, for one hour back, starting on hour ago
         if (data.getString("status").equals("success"))
         {
-            float diff = 0;
             JSONArray vals = data.getJSONArray("data");
-
-            JSONObject v;
-            float open;
-            float close;
-            for (int i = 0; i < vals.length(); i++)
-            {
-                v = vals.getJSONObject(i);
-                open = v.getFloat("open");
-                close = v.getFloat("close");
-                diff += close - open;
-            }
+            // float diff = 0;
+            // JSONObject v;
+            // float open;
+            // float close;
+            // for (int i = 0; i < vals.length(); i++)
+            // {
+            //     v = vals.getJSONObject(i);
+            //     open = v.getFloat("open");
+            //     close = v.getFloat("close");
+            //     diff += close - open;
+            // }
             
             float firstOpen = vals.getJSONObject(0).getFloat("open");
             float lastClose = vals.getJSONObject(vals.length() - 1).getFloat("close");
