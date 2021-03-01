@@ -42,21 +42,28 @@ public class TestWallet extends TimerTask
      * Get data on BTC/EUR trading at this instant.
      * @return JSONObject with keys "last", "high", "low", "vwap", "volume", "bid", "ask", "timestamp" and "open".
      */
-    public JSONObject getBTCData()
+    public JSONObject getBTCData() 
     {
+        // TODO Obviously this needs to be better 
         JSONObject data = new JSONObject(conn.sendPublicRequest("/api/v2/ticker/btceur"));
+        if (data.has("error"))
+        {
+            throw new RuntimeException("Bugger");
+        }
+        // BAD, will cause crash
         return data;
     }
 
     public JSONObject getBalance()
     {
         JSONObject balance = new JSONObject();
+        JSONObject btcData = getBTCData();
         balance.put("btc_available", btc_available);
         balance.put("btc_balance", btc_balance);
         balance.put("eur_available", eur_available);
         balance.put("eur_balance", eur_balance);
-        BigDecimal value = balance.getBigDecimal("eur_balance").add(balance.getBigDecimal("btc_balance").multiply(getBTCData().getBigDecimal("last")));
-        BigDecimal valueBTC = balance.getBigDecimal("btc_balance").add(balance.getBigDecimal("eur_balance").divide(getBTCData().getBigDecimal("last"), RoundingMode.HALF_DOWN));
+        BigDecimal value = balance.getBigDecimal("eur_balance").add(balance.getBigDecimal("btc_balance").multiply(btcData.getBigDecimal("last")));
+        BigDecimal valueBTC = balance.getBigDecimal("btc_balance").add(balance.getBigDecimal("eur_balance").divide(btcData.getBigDecimal("last"), RoundingMode.HALF_DOWN));
         balance.put("value", value);
         balance.put("value_btc", valueBTC);
         return balance;
