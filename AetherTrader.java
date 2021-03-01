@@ -13,7 +13,8 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 /*
-    TODO Check calculatePercentagChange (data doesn't seem to match charts at all)
+    TODO Check calculatePercentageChange (data doesn't seem to match charts at all)
+    TODO consider changing if/else error handling to try/catch
 */
 
 public class AetherTrader extends TimerTask
@@ -82,6 +83,7 @@ public class AetherTrader extends TimerTask
     private double priceAtLastTransaction = -1;
     private long lastOrderID;
     private JSONObject internalError;
+    private JSONObject externalError;
     private SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM/yy HH:mm");
     private Timer autoTradingTimer;
     private boolean isAutotrading = false;
@@ -106,6 +108,9 @@ public class AetherTrader extends TimerTask
     {
         internalError = new JSONObject();
         internalError.put("error", "Internal AetherTrader Error");
+
+        externalError = new JSONObject();
+        externalError.put("error", "External erorr getting data. Try again later");
     }
 
     //#region Trading methods
@@ -118,6 +123,10 @@ public class AetherTrader extends TimerTask
     public JSONObject getBTCData()
     {
         JSONObject data = new JSONObject(conn.sendPublicRequest("/api/v2/ticker/btceur"));
+        if (data.has("error"))
+        {
+            return externalError;
+        }
         return data;
     }
 
@@ -131,6 +140,11 @@ public class AetherTrader extends TimerTask
     {
         JSONObject data = new JSONObject(conn.sendPrivateRequest("/api/v2/balance/"));
         JSONObject btcData = new JSONObject(conn.sendPublicRequest("/api/v2/ticker/btceur"));
+
+        if (data.has("error") || btcData.has("error"))
+        {
+            return externalError;
+        }
         BigDecimal value = data.getBigDecimal("eur_balance").add(data.getBigDecimal("btc_balance").multiply(btcData.getBigDecimal("last")));
         List<String> balKeys = Arrays.asList("eur_available", "eur_balance", "btc_available", "btc_balance", "btceur_fee");
         JSONObject result = new JSONObject();
@@ -306,6 +320,10 @@ public class AetherTrader extends TimerTask
         BigDecimal amt =  new BigDecimal(getUserInput("Amount (BTC): "));
 
         double price = getBTCPrice();
+        if (price == -1)
+        {
+            return "Unable to get BTC price. Unable to place order. Try again.";
+        }
         String result;
         System.out.println(String.format("Place sell instant order for %.8f BTC at ~€%.2f (Value: ~€%.2f)", amt, price, amt.multiply(new BigDecimal(price))));
         if (userConfirm())
@@ -369,6 +387,10 @@ public class AetherTrader extends TimerTask
         BigDecimal amt = new BigDecimal((getUserInput("Amount (EUR): ")));
 
         double price = getBTCPrice();
+        if (price == -1)
+        {
+            return "Unable to get BTC price. Unable to place order. Try again.";
+        }
         String result;
         System.out.println(String.format("Place buy instant order for %.8f BTC at ~€%.2f (Value: ~%.8fBTC)", amt, price, amt.divide(new BigDecimal(price), RoundingMode.HALF_DOWN)));
         if (userConfirm())
@@ -410,9 +432,19 @@ public class AetherTrader extends TimerTask
         if (!data.has("status"))
         {
             priceAtLastTransaction = getBTCPrice();
-            lastOrderID = data.getLong("id");
-            data.put("status", "success");
-            return data;
+            if (priceAtLastTransaction != -1)
+            {
+                lastOrderID = data.getLong("id");
+                data.put("status", "success");
+                return data;
+            }
+            else
+            {
+                data.put("status", "failure");
+                data.put("error", "Could not get BTC price.");
+                data.remove("reason");
+                return data;
+            }
         }
         else
         {
@@ -475,9 +507,19 @@ public class AetherTrader extends TimerTask
         if (!data.has("status"))
         {
             priceAtLastTransaction = getBTCPrice();
-            lastOrderID = data.getLong("id");
-            data.put("status", "success");
-            return data;
+            if (priceAtLastTransaction != -1)
+            {
+                lastOrderID = data.getLong("id");
+                data.put("status", "success");
+                return data;
+            }
+            else
+            {
+                data.put("status", "failure");
+                data.put("error", "Could not get BTC price.");
+                data.remove("reason");
+                return data;
+            }
         }
         else
         {
@@ -827,7 +869,15 @@ public class AetherTrader extends TimerTask
     public double getBTCPrice()
     {
         JSONObject data = new JSONObject(conn.sendPublicRequest("/api/v2/ticker/btceur"));
-        return (data.getDouble("last"));
+        if (!data.has("error"))
+        {
+            return (data.getDouble("last"));
+        }
+        else
+        {
+            return -1;
+        }
+        
     }
 
     /**
