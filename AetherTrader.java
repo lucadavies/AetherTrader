@@ -123,10 +123,6 @@ public class AetherTrader extends TimerTask
     public JSONObject getBTCData()
     {
         JSONObject data = new JSONObject(conn.sendPublicRequest("/api/v2/ticker/btceur"));
-        if (data.has("error"))
-        {
-            return externalError;
-        }
         return data;
     }
 
@@ -141,10 +137,6 @@ public class AetherTrader extends TimerTask
         JSONObject data = new JSONObject(conn.sendPrivateRequest("/api/v2/balance/"));
         JSONObject btcData = new JSONObject(conn.sendPublicRequest("/api/v2/ticker/btceur"));
 
-        if (data.has("error") || btcData.has("error"))
-        {
-            return externalError;
-        }
         BigDecimal value = data.getBigDecimal("eur_balance").add(data.getBigDecimal("btc_balance").multiply(btcData.getBigDecimal("last")));
         List<String> balKeys = Arrays.asList("eur_available", "eur_balance", "btc_available", "btc_balance", "btceur_fee");
         JSONObject result = new JSONObject();
@@ -869,15 +861,7 @@ public class AetherTrader extends TimerTask
     public double getBTCPrice()
     {
         JSONObject data = new JSONObject(conn.sendPublicRequest("/api/v2/ticker/btceur"));
-        if (!data.has("error"))
-        {
-            return (data.getDouble("last"));
-        }
-        else
-        {
-            return -1;
-        }
-        
+        return (data.getDouble("last"));      
     }
 
     /**

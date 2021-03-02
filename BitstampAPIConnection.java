@@ -9,9 +9,12 @@ import java.util.UUID;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import javax.management.RuntimeErrorException;
 
 import org.apache.commons.codec.binary.Hex;
 import org.json.JSONObject;
+
+// TODO document this class at least a little bit...
 
 public class BitstampAPIConnection
 {
@@ -64,25 +67,26 @@ public class BitstampAPIConnection
 
             if (response.statusCode() != 200)
             {
-                JSONObject errorResp = new JSONObject();
-                errorResp.put("status", "failure");
-                errorResp.put("code", response.statusCode());
-                errorResp.put("error", "status code not 200");
-                System.out.println("Error: got response code " + response.statusCode());
-                return errorResp.toString();
+                throw new BadResponseException(response.statusCode());
+
+                // JSONObject errorResp = new JSONObject();
+                // errorResp.put("status", "failure");
+                // errorResp.put("code", response.statusCode());
+                // errorResp.put("error", "status code not 200");
+                // System.out.println("Error: got response code " + response.statusCode());
+                // return errorResp.toString();
             }
 
             String resp = response.body();
             return resp;
         }
+        catch (BadResponseException e)
+        {
+            throw new RuntimeException(e);
+        }
         catch (Exception e)
         {
-            JSONObject errorResp = new JSONObject();
-            errorResp.put("status", "failure");
-            errorResp.put("code", response != null ? response.statusCode() : "N/A");
-            errorResp.put("error", "Non-matching signatures");
-            System.out.println("Request/response signatures do not match");
-            return errorResp.toString();
+            throw new RuntimeException(e);
         }
     }
 
@@ -108,25 +112,25 @@ public class BitstampAPIConnection
 
             if (response.statusCode() != 200)
             {
-                JSONObject errorResp = new JSONObject();
-                errorResp.put("status", "failure");
-                errorResp.put("code", response.statusCode());
-                errorResp.put("error", "status code not 200");
-                System.out.println("Error: got response code " + response.statusCode());
-                return errorResp.toString();
+                throw new BadResponseException(response.statusCode());
+                // JSONObject errorResp = new JSONObject();
+                // errorResp.put("status", "failure");
+                // errorResp.put("code", response.statusCode());
+                // errorResp.put("error", "status code not 200");
+                // System.out.println("Error: got response code " + response.statusCode());
+                // return errorResp.toString();
             }
 
             String resp = response.body();
             return resp;
         }
+        catch (BadResponseException e)
+        {
+            throw new RuntimeException(e);
+        }
         catch (Exception e)
         {
-            JSONObject errorResp = new JSONObject();
-            errorResp.put("status", "failure");
-            errorResp.put("code", response != null ? response.statusCode() : "N/A");
-            errorResp.put("error", "Non-matching signatures");
-            System.out.println("Request/response signatures do not match");
-            return errorResp.toString();
+            throw new RuntimeException(e);
         }
     }
 
@@ -135,12 +139,15 @@ public class BitstampAPIConnection
         // Check API Key and API Key Secret are present
         if (this.apiKey == null || this.apiKeySecret == null)
         {
-            JSONObject errorResp = new JSONObject();
-            errorResp.put("status", "failure");
-            errorResp.put("code", "N/A");
-            errorResp.put("error", "Missing API Key or API Key Secret");
-            System.out.println("Missing API Key or API Key Secret");
-            return errorResp.toString();
+            //throw new APIKeyMissingException();
+            throw new RuntimeException("API Key missing.");
+
+            // JSONObject errorResp = new JSONObject();
+            // errorResp.put("status", "failure");
+            // errorResp.put("code", "N/A");
+            // errorResp.put("error", "Missing API Key or API Key Secret");
+            // System.out.println("Missing API Key or API Key Secret");
+            // return errorResp.toString();
         }
 
         String apiKey = String.format("%s %s", "BITSTAMP", this.apiKey);
@@ -180,12 +187,13 @@ public class BitstampAPIConnection
 
             if (response.statusCode() != 200)
             {
-                JSONObject errorResp = new JSONObject();
-                errorResp.put("status", "failure");
-                errorResp.put("code", response.statusCode());
-                errorResp.put("error", "status code not 200");
-                System.out.println("Error: got response code " + response.statusCode());
-                return errorResp.toString();
+                throw new BadResponseException(response.statusCode());
+                // JSONObject errorResp = new JSONObject();
+                // errorResp.put("status", "failure");
+                // errorResp.put("code", response.statusCode());
+                // errorResp.put("error", "status code not 200");
+                // System.out.println("Error: got response code " + response.statusCode());
+                // return errorResp.toString();
             }
 
             String serverSignature = response.headers().map().get("x-server-auth-signature").get(0);
@@ -198,15 +206,24 @@ public class BitstampAPIConnection
 
             if (!newSignature.equals(serverSignature))
             {
-                JSONObject errorResp = new JSONObject();
-                errorResp.put("status", "failure");
-                errorResp.put("code", response.statusCode());
-                errorResp.put("error", "Non-matching signatures");
-                System.out.println("Request/response signatures do not match");
-                return errorResp.toString();
+                throw new SignatureMismatchException();
+                // JSONObject errorResp = new JSONObject();
+                // errorResp.put("status", "failure");
+                // errorResp.put("code", response.statusCode());
+                // errorResp.put("error", "Non-matching signatures");
+                // System.out.println("Request/response signatures do not match");
+                // return errorResp.toString();
             }
 
             return response.body();
+        }
+        catch (SignatureMismatchException e)
+        {
+            throw new RuntimeException(e);
+        }
+        catch (BadResponseException e)
+        {
+            throw new RuntimeException(e);
         }
         catch (Exception e)
         {
@@ -219,12 +236,15 @@ public class BitstampAPIConnection
         // Check API Key and API Key Secret are present
         if (this.apiKey == null || this.apiKeySecret == null)
         {
-            JSONObject errorResp = new JSONObject();
-            errorResp.put("status", "failure");
-            errorResp.put("code", "N/A");
-            errorResp.put("error", "Missing API Key or API Key Secret");
-            System.out.println("Missing API Key or API Key Secret");
-            return errorResp.toString();
+            //throw new APIKeyMissingException();
+            throw new RuntimeException("API Key missing.");
+
+            // JSONObject errorResp = new JSONObject();
+            // errorResp.put("status", "failure");
+            // errorResp.put("code", "N/A");
+            // errorResp.put("error", "Missing API Key or API Key Secret");
+            // System.out.println("Missing API Key or API Key Secret");
+            // return errorResp.toString();
         }
 
         String apiKey = String.format("%s %s", "BITSTAMP", this.apiKey);
@@ -270,12 +290,13 @@ public class BitstampAPIConnection
 
             if (response.statusCode() != 200)
             {
-                JSONObject errorResp = new JSONObject();
-                errorResp.put("status", "failure");
-                errorResp.put("code", response.statusCode());
-                errorResp.put("error", "status code not 200");
-                System.out.println("Error: got response code " + response.statusCode());
-                return errorResp.toString();
+                throw new BadResponseException(response.statusCode());
+                // JSONObject errorResp = new JSONObject();
+                // errorResp.put("status", "failure");
+                // errorResp.put("code", response.statusCode());
+                // errorResp.put("error", "status code not 200");
+                // System.out.println("Error: got response code " + response.statusCode());
+                // return errorResp.toString();
             }
 
             String serverSignature = response.headers().map().get("x-server-auth-signature").get(0);
@@ -288,15 +309,24 @@ public class BitstampAPIConnection
 
             if (!newSignature.equals(serverSignature))
             {
-                JSONObject errorResp = new JSONObject();
-                errorResp.put("status", "failure");
-                errorResp.put("code", response.statusCode());
-                errorResp.put("error", "Non-matching signatures");
-                System.out.println("Request/response signatures do not match");
-                return errorResp.toString();
+                throw new SignatureMismatchException();
+                // JSONObject errorResp = new JSONObject();
+                // errorResp.put("status", "failure");
+                // errorResp.put("code", response.statusCode());
+                // errorResp.put("error", "Non-matching signatures");
+                // System.out.println("Request/response signatures do not match");
+                // return errorResp.toString();
             }
 
             return response.body();
+        }
+        catch (SignatureMismatchException e)
+        {
+            throw new RuntimeException(e);
+        }
+        catch (BadResponseException e)
+        {
+            throw new RuntimeException(e);
         }
         catch (Exception e)
         {
