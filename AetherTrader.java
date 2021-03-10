@@ -774,7 +774,7 @@ public class AetherTrader
 
     /**
      * Predicts the likely movement of the market based upon previous data. (HEAVYILY WIP).
-     * @return The <code>Trend</code> the market will follow 
+     * @return The {@code Trend} the market will follow 
      * @see Trend
      */
     private Trend predictMarket()
@@ -948,11 +948,11 @@ public class AetherTrader
     /**
      * Calculates the percentage difference in price over a given time period.
      * 
-     * Each percentage represents the change in price over the length of time spanned by <code>steps</code> number of
-     * <code>timeStep</code>s as a simple sum.
+     * Each percentage represents the change in price over the length of time spanned by {@code steps} number of
+     * {@code timeSteps} as a simple sum.
      * 
      * @param timeStep The granularity of calculations in seconds
-     * @param steps The number of <code>timeSteps</code> back to include in calculation
+     * @param steps The number of {@code timeSteps} back to include in calculation
      * @param offset Number of seconds back to get results from
      * @return The percentage change, postive if up, negative if down
      */
@@ -993,7 +993,7 @@ public class AetherTrader
      * Gets the current market state from the percentage change.
      * 
      * @param percent Change in market
-     * @return The observed <code>MarketState</code>
+     * @return The observed {@code MarketState}
      * @see MarketState
      */
     private MarketState getMarketState(float percent)
@@ -1039,7 +1039,7 @@ public class AetherTrader
 
     /**
      * Gets the current trading state using the balances of BTC and EUR
-     * @return The <code>TradingState</code> of this account
+     * @return The {@code TradingState} of this account
      * @see TradingState
      */
     private TradingState getTradingState()

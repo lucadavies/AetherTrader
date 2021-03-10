@@ -15,7 +15,7 @@ import org.apache.commons.codec.binary.Hex;
 
 /**
  * Provides a facility to send both private and public API calls to Bitstamp. There is no persistent connection, each 
- * call a seperate connection, though the <code>HttpClient</code> instance persists.
+ * call a seperate connection, though the {@code HttpClient} instance persists.
  */
 public class BitstampAPIConnection
 {
