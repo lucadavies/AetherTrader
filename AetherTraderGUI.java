@@ -1,5 +1,6 @@
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
+import javax.swing.plaf.basic.BasicOptionPaneUI.ButtonActionListener;
 
 import org.json.JSONObject;
 
@@ -11,13 +12,16 @@ import java.util.TimerTask;
 
 public class AetherTraderGUI extends TimerTask implements ActionListener
 {
-    private JFrame frame;
-    private JPanel panMain;
-    private JPanel panData;
-    private JTabbedPane tabCtl;
-    private JPanel panDash;
+    private JFrame frame = new JFrame("Aether Trader");
+    private JPanel panMain = new JPanel(new BorderLayout());
+    private JPanel panData = new JPanel(new GridLayout(4, 2));
+    private JPanel panDash = new JPanel(new FlowLayout());
+    private JPanel panInstantOrders = new JPanel(new FlowLayout());
     private JPanel panLimit;
-    private JButton btnTest;
+    private JTabbedPane tabCtl = new JTabbedPane(JTabbedPane.TOP);
+    private JButton btnInstantBuy = new JButton("Inst. Buy");
+    private JButton btnInstantSell = new JButton("Inst. Sell");
+    private JButton btnStartAutoTrading = new JButton("Launch Trading Bot");
     private JLabel lblLast = new JLabel();
     private JLabel lblHigh = new JLabel();
     private JLabel lblLow = new JLabel();
@@ -30,23 +34,16 @@ public class AetherTraderGUI extends TimerTask implements ActionListener
     {
         trader = new AetherTrader();
 
-        frame = new JFrame("Aether Trader");
+        
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setSize(800, 400);
 
-        panMain = new JPanel(new BorderLayout());
-        panDash = new JPanel();
-        panLimit = new JPanel();
-        tabCtl = new JTabbedPane(JTabbedPane.TOP);
-        tabCtl.addTab("Dashboard", panDash);
-        tabCtl.addTab("Limit Order", panLimit);
-        panData = new JPanel(new GridLayout(4, 2));
-        btnTest = new JButton("Test");
-        btnTest.addActionListener(this);
-
-        panMain.add(panData, BorderLayout.WEST);
         panMain.setBorder(new EmptyBorder(10, 10, 10, 10));
-
+        panMain.add(new JLabel("Aether Trader Dashboard", SwingConstants.CENTER), BorderLayout.NORTH);
+        panMain.add(panData, BorderLayout.WEST);        
+        panMain.add(tabCtl, BorderLayout.CENTER);
+        panMain.add(new JLabel("Open orders maybe?"), BorderLayout.EAST);
+        
         panData.add(new JLabel("Last: "));
         panData.add(lblLast);
         panData.add(new JLabel("Low: "));
@@ -56,11 +53,20 @@ public class AetherTraderGUI extends TimerTask implements ActionListener
         panData.add(new JLabel("Volume: "));
         panData.add(lblVolume);
 
-        panMain.add(new JLabel("Aether Trader Dashboard", SwingConstants.CENTER), BorderLayout.NORTH);
-        panMain.add(tabCtl, BorderLayout.CENTER);
-        panMain.add(new JButton(), BorderLayout.EAST);
-        panMain.add(btnTest, BorderLayout.SOUTH);
+        tabCtl.addTab("Dashboard", panDash);
+        tabCtl.addTab("Limit Order", panLimit);
         
+        panDash.add(panInstantOrders);
+        panDash.add(btnStartAutoTrading);
+        
+        panInstantOrders.setBorder(BorderFactory.createTitledBorder("Instant Orders"));
+        panInstantOrders.add(btnInstantBuy);
+        panInstantOrders.add(btnInstantSell);
+        
+        btnInstantBuy.addActionListener(this);
+        btnInstantSell.addActionListener(this);
+        btnStartAutoTrading.addActionListener(this);
+
         ticker = new Timer();
         ticker.scheduleAtFixedRate(this, 0, 1000);
 
@@ -72,10 +78,35 @@ public class AetherTraderGUI extends TimerTask implements ActionListener
     {
         if (evt.getSource() instanceof JButton)
         {
+            String msg = "";
+            int resp;
             JButton btn = (JButton)evt.getSource();
-            if (btn == btnTest);
+            if (btn == btnInstantBuy)
             {
-                lblHello.setText("clickity clack");
+                msg = "Are you sure you want to place an instant buy order?";
+                resp = JOptionPane.showConfirmDialog(frame, msg, "Place instant buy?", JOptionPane.YES_NO_OPTION);
+                if (resp == JOptionPane.YES_OPTION)
+                {
+
+                }
+            }
+            else if (btn == btnInstantSell)
+            {
+                msg = "Are you sure you want to place an instant sell order?";
+                resp = JOptionPane.showConfirmDialog(frame,msg, "Place instant sell?", JOptionPane.YES_NO_OPTION);
+                if (resp == JOptionPane.YES_OPTION)
+                {
+
+                }
+            }
+            else if (btn == btnStartAutoTrading)
+            {
+                msg = "Are you sure you want to launch the trading bot?\nThis is still VERY MUCH  a work in progress and does not operate on your real funds.";
+                resp = JOptionPane.showConfirmDialog(frame, msg, "Place instant buy?", JOptionPane.YES_NO_OPTION);
+                if (resp == JOptionPane.YES_OPTION)
+                {
+                    trader.startAuto();
+                }
             }
         }
     }
