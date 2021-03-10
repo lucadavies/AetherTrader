@@ -125,7 +125,7 @@ public class AetherTraderGUI extends TimerTask implements ActionListener
                 resp = JOptionPane.showConfirmDialog(frame, msg, "Halt trading bot?", JOptionPane.YES_NO_OPTION);
                 if (resp == JOptionPane.YES_OPTION)
                 {
-                    //btnStartAutoTrading.setEnabled(true);
+                    btnStartAutoTrading.setEnabled(true);
                     btnStopAutoTrading.setEnabled(false);
                     trader.stopAuto();
                 }

@@ -17,7 +17,7 @@ import org.json.JSONObject;
     TODO consider changing if/else error handling to try/catch
 */
 
-public class AetherTrader extends TimerTask
+public class AetherTrader
 {
     /**
      * Represents possible status of BTC holding.
@@ -206,6 +206,7 @@ public class AetherTrader extends TimerTask
         
         return result;
     }
+    
     /**
      * Cancels an order.
      * 
@@ -573,10 +574,10 @@ public class AetherTrader extends TimerTask
         tradingState = getTradingState();
         setUpMarketHistory();
         autoTradingTimer = new Timer("Auto Trader");
-        autoTradingTimer.scheduleAtFixedRate(this, 0, 60000);
+        autoTradingTimer.scheduleAtFixedRate(new AutoTraderTask(this), 0, 60000);
     }
 
-    public void run()
+    public void doNextAutoTrade()
     {        
         //get market state now
         float percentChange = calculatePercentChange(TIME_STEP, STEPS, 0);
