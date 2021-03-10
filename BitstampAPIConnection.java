@@ -1,4 +1,5 @@
 import java.io.IOException;
+import java.net.ConnectException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -108,6 +109,15 @@ public class BitstampAPIConnection
                 }
                 throw new RuntimeException(e);
             }
+            catch (ConnectException e)
+            {
+                if (i++ < MAX_RETRY)
+                {
+                    System.out.println("[API Connection]: Server failed to connect. Retrying...");
+                    continue;
+                }
+                throw new RuntimeException(e);
+            }
             catch (Exception e)
             {
                 throw new RuntimeException(e);
@@ -160,6 +170,15 @@ public class BitstampAPIConnection
                 if (i++ < MAX_RETRY)
                 {
                     System.out.println("[API Connection]: Server returned bad response. Retrying...");
+                    continue;
+                }
+                throw new RuntimeException(e);
+            }
+            catch (ConnectException e)
+            {
+                if (i++ < MAX_RETRY)
+                {
+                    System.out.println("[API Connection]: Server failed to connect. Retrying...");
                     continue;
                 }
                 throw new RuntimeException(e);
@@ -256,6 +275,15 @@ public class BitstampAPIConnection
                 if (i++ < MAX_RETRY)
                 {
                     System.out.println("[API Connection]: " + e.getMessage() + " Retrying...");
+                    continue;
+                }
+                throw new RuntimeException(e);
+            }
+            catch (ConnectException e)
+            {
+                if (i++ < MAX_RETRY)
+                {
+                    System.out.println("[API Connection]: Server failed to connect. Retrying...");
                     continue;
                 }
                 throw new RuntimeException(e);
@@ -359,6 +387,15 @@ public class BitstampAPIConnection
                 if (i++ < MAX_RETRY)
                 {
                     System.out.println("[API Connection]: " + e.getMessage() + " Retrying...");
+                    continue;
+                }
+                throw new RuntimeException(e);
+            }
+            catch (ConnectException e)
+            {
+                if (i++ < MAX_RETRY)
+                {
+                    System.out.println("[API Connection]: Server failed to connect. Retrying...");
                     continue;
                 }
                 throw new RuntimeException(e);
