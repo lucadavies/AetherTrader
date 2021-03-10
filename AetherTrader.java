@@ -572,7 +572,7 @@ public class AetherTrader extends TimerTask
         // TODO setup: cancel current orders
         tradingState = getTradingState();
         setUpMarketHistory();
-        autoTradingTimer = new Timer();
+        autoTradingTimer = new Timer("Auto Trader");
         autoTradingTimer.scheduleAtFixedRate(this, 0, 60000);
     }
 
@@ -596,13 +596,13 @@ public class AetherTrader extends TimerTask
     /**
      * Disposes of threads related to automatic trading so that the application can terminate.
      */
-    public void close()
+    public void stopAuto()
     {
-        //wallet.close();
         if (autoTradingTimer != null)
         {
             autoTradingTimer.cancel();
             autoTradingTimer.purge();
+            System.out.println("Auto trader halted.");
         }
     }
 
@@ -1282,6 +1282,6 @@ public class AetherTrader extends TimerTask
                 }
             }
         }
-        trader.close();
+        trader.stopAuto();
     }
 }

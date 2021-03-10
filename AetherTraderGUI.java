@@ -17,11 +17,13 @@ public class AetherTraderGUI extends TimerTask implements ActionListener
     private JPanel panData = new JPanel(new GridLayout(4, 2));
     private JPanel panDash = new JPanel(new FlowLayout());
     private JPanel panInstantOrders = new JPanel(new FlowLayout());
-    private JPanel panLimit;
+    private JPanel panTradingBot = new JPanel(new FlowLayout());
+    private JPanel panLimit = new JPanel();
     private JTabbedPane tabCtl = new JTabbedPane(JTabbedPane.TOP);
     private JButton btnInstantBuy = new JButton("Inst. Buy");
     private JButton btnInstantSell = new JButton("Inst. Sell");
     private JButton btnStartAutoTrading = new JButton("Launch Trading Bot");
+    private JButton btnStopAutoTrading = new JButton("Stop Trading Bot");
     private JLabel lblLast = new JLabel();
     private JLabel lblHigh = new JLabel();
     private JLabel lblLow = new JLabel();
@@ -55,19 +57,26 @@ public class AetherTraderGUI extends TimerTask implements ActionListener
 
         tabCtl.addTab("Dashboard", panDash);
         tabCtl.addTab("Limit Order", panLimit);
+        panLimit.add(lblHello);
         
         panDash.add(panInstantOrders);
-        panDash.add(btnStartAutoTrading);
+        panDash.add(panTradingBot);
         
         panInstantOrders.setBorder(BorderFactory.createTitledBorder("Instant Orders"));
         panInstantOrders.add(btnInstantBuy);
         panInstantOrders.add(btnInstantSell);
+
+        panTradingBot.setBorder(BorderFactory.createTitledBorder("Trading Bot"));
+        panTradingBot.add(btnStartAutoTrading);
+        panTradingBot.add(btnStopAutoTrading);
         
         btnInstantBuy.addActionListener(this);
         btnInstantSell.addActionListener(this);
         btnStartAutoTrading.addActionListener(this);
+        btnStopAutoTrading.addActionListener(this);
+        btnStopAutoTrading.setEnabled(false);
 
-        ticker = new Timer();
+        ticker = new Timer("GUI Ticker");
         ticker.scheduleAtFixedRate(this, 0, 1000);
 
         frame.setContentPane(panMain);
@@ -102,10 +111,23 @@ public class AetherTraderGUI extends TimerTask implements ActionListener
             else if (btn == btnStartAutoTrading)
             {
                 msg = "Are you sure you want to launch the trading bot?\nThis is still VERY MUCH  a work in progress and does not operate on your real funds.";
-                resp = JOptionPane.showConfirmDialog(frame, msg, "Place instant buy?", JOptionPane.YES_NO_OPTION);
+                resp = JOptionPane.showConfirmDialog(frame, msg, "Launch trading bot?", JOptionPane.YES_NO_OPTION);
                 if (resp == JOptionPane.YES_OPTION)
                 {
+                    btnStartAutoTrading.setEnabled(false);
+                    btnStopAutoTrading.setEnabled(true);
                     trader.startAuto();
+                }
+            }
+            else if (btn == btnStopAutoTrading)
+            {
+                msg = "Are you sure you want to halt the trading bot?\n";
+                resp = JOptionPane.showConfirmDialog(frame, msg, "Halt trading bot?", JOptionPane.YES_NO_OPTION);
+                if (resp == JOptionPane.YES_OPTION)
+                {
+                    //btnStartAutoTrading.setEnabled(true);
+                    btnStopAutoTrading.setEnabled(false);
+                    trader.stopAuto();
                 }
             }
         }
