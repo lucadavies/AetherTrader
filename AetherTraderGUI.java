@@ -76,7 +76,7 @@ public class AetherTraderGUI extends TimerTask implements ActionListener
         btnStopAutoTrading.setEnabled(false);
 
         ticker = new Timer("GUI Ticker");
-        ticker.scheduleAtFixedRate(this, 0, 1000);
+        ticker.scheduleAtFixedRate(this, 0, 10000);
 
         frame.setContentPane(panMain);
         frame.setVisible(true);
