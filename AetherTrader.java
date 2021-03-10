@@ -7,7 +7,6 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.Timer;
-import java.util.TimerTask;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -17,7 +16,7 @@ import org.json.JSONObject;
     TODO consider changing if/else error handling to try/catch
 */
 
-public class AetherTrader extends TimerTask
+public class AetherTrader
 {
     /**
      * Represents possible status of BTC holding.
@@ -123,10 +122,6 @@ public class AetherTrader extends TimerTask
     public JSONObject getBTCData()
     {
         JSONObject data = new JSONObject(conn.sendPublicRequest("/api/v2/ticker/btceur"));
-        if (data.has("error"))
-        {
-            return externalError;
-        }
         return data;
     }
 
@@ -141,10 +136,6 @@ public class AetherTrader extends TimerTask
         JSONObject data = new JSONObject(conn.sendPrivateRequest("/api/v2/balance/"));
         JSONObject btcData = new JSONObject(conn.sendPublicRequest("/api/v2/ticker/btceur"));
 
-        if (data.has("error") || btcData.has("error"))
-        {
-            return externalError;
-        }
         BigDecimal value = data.getBigDecimal("eur_balance").add(data.getBigDecimal("btc_balance").multiply(btcData.getBigDecimal("last")));
         List<String> balKeys = Arrays.asList("eur_available", "eur_balance", "btc_available", "btc_balance", "btceur_fee");
         JSONObject result = new JSONObject();
@@ -214,6 +205,7 @@ public class AetherTrader extends TimerTask
         
         return result;
     }
+    
     /**
      * Cancels an order.
      * 
@@ -569,7 +561,25 @@ public class AetherTrader extends TimerTask
     
     //#region Auto Trading methods
 
-    public void run()
+    /**
+     * Begins running the automatic trading programme.
+     */
+    public void startAuto()
+    {
+        wallet = new TestWallet(new BigDecimal(0.00338066), new BigDecimal(0));
+        isAutotrading = true;
+
+        // TODO setup: cancel current orders
+        tradingState = getTradingState();
+        setUpMarketHistory();
+        autoTradingTimer = new Timer("Auto Trader");
+        autoTradingTimer.scheduleAtFixedRate(new AutoTraderTask(this), 0, 60000);
+    }
+
+    /**
+     * Advances the auto trader to it's next state.
+     */
+    public void doNextAutoTrade()
     {        
         //get market state now
         float percentChange = calculatePercentChange(TIME_STEP, STEPS, 0);
@@ -589,13 +599,13 @@ public class AetherTrader extends TimerTask
     /**
      * Disposes of threads related to automatic trading so that the application can terminate.
      */
-    public void close()
+    public void stopAuto()
     {
-        //wallet.close();
         if (autoTradingTimer != null)
         {
             autoTradingTimer.cancel();
             autoTradingTimer.purge();
+            System.out.println("Auto trader halted.");
         }
     }
 
@@ -766,7 +776,7 @@ public class AetherTrader extends TimerTask
 
     /**
      * Predicts the likely movement of the market based upon previous data. (HEAVYILY WIP).
-     * @return The <code>Trend</code> the market will follow 
+     * @return The {@code Trend} the market will follow 
      * @see Trend
      */
     private Trend predictMarket()
@@ -869,15 +879,7 @@ public class AetherTrader extends TimerTask
     public double getBTCPrice()
     {
         JSONObject data = new JSONObject(conn.sendPublicRequest("/api/v2/ticker/btceur"));
-        if (!data.has("error"))
-        {
-            return (data.getDouble("last"));
-        }
-        else
-        {
-            return -1;
-        }
-        
+        return (data.getDouble("last"));      
     }
 
     /**
@@ -948,11 +950,11 @@ public class AetherTrader extends TimerTask
     /**
      * Calculates the percentage difference in price over a given time period.
      * 
-     * Each percentage represents the change in price over the length of time spanned by <code>steps</code> number of
-     * <code>timeStep</code>s as a simple sum.
+     * Each percentage represents the change in price over the length of time spanned by {@code steps} number of
+     * {@code timeSteps} as a simple sum.
      * 
      * @param timeStep The granularity of calculations in seconds
-     * @param steps The number of <code>timeSteps</code> back to include in calculation
+     * @param steps The number of {@code timeSteps} back to include in calculation
      * @param offset Number of seconds back to get results from
      * @return The percentage change, postive if up, negative if down
      */
@@ -993,7 +995,7 @@ public class AetherTrader extends TimerTask
      * Gets the current market state from the percentage change.
      * 
      * @param percent Change in market
-     * @return The observed <code>MarketState</code>
+     * @return The observed {@code MarketState}
      * @see MarketState
      */
     private MarketState getMarketState(float percent)
@@ -1039,7 +1041,7 @@ public class AetherTrader extends TimerTask
 
     /**
      * Gets the current trading state using the balances of BTC and EUR
-     * @return The <code>TradingState</code> of this account
+     * @return The {@code TradingState} of this account
      * @see TradingState
      */
     private TradingState getTradingState()
@@ -1203,11 +1205,11 @@ public class AetherTrader extends TimerTask
     }
 
     /**
-     * Begins running thr automatic trading programme.
+     * Prompts the user to confirm if they want to begin running the automatic trading programme.
      * 
      * @return A comment reflecting on the user's decision to begin the programme or not. (WIP)
      */
-    public String startAuto()
+    public String userStartAuto()
     {
         System.out.print("This feature is currently HEAVILY in development ");
         System.out.print("and so will not trade on your actual and instead uses a test wallet. ");
@@ -1215,14 +1217,7 @@ public class AetherTrader extends TimerTask
         System.out.println("This will allow the program to begin trading automaticaly according to the in-built logic. Are you sure you want to continue?");
         if (userConfirm())
         {
-            wallet = new TestWallet(new BigDecimal(0.00338066), new BigDecimal(0));
-            isAutotrading = true;
-
-            // TODO setup: cancel current orders
-            tradingState = getTradingState();
-            setUpMarketHistory();
-            autoTradingTimer = new Timer();
-            autoTradingTimer.scheduleAtFixedRate(this, 0, 60000);
+            startAuto();
             return "Bold move.\n";
         }
         else
@@ -1264,7 +1259,7 @@ public class AetherTrader extends TimerTask
                     System.out.println(trader.userBuyLimitOrder());
                     break;
                 case 9:
-                    System.out.println(trader.startAuto());
+                    System.out.println(trader.userStartAuto());
                     break menu;
                 case 10:
                     break;
@@ -1290,6 +1285,6 @@ public class AetherTrader extends TimerTask
                 }
             }
         }
-        trader.close();
+        trader.stopAuto();
     }
 }

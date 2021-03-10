@@ -34,7 +34,7 @@ public class TestWallet extends TimerTask
         btc_balance = btc;
         eur_available = eur;
         eur_balance = eur;
-        orderProcessTimer = new Timer();
+        orderProcessTimer = new Timer("Wallet Order Processor");
         orderProcessTimer.scheduleAtFixedRate(this, 0, 60000);
     }
 

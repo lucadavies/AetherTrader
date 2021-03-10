@@ -1,4 +1,5 @@
 import java.io.IOException;
+import java.net.ConnectException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -11,8 +12,11 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
 import org.apache.commons.codec.binary.Hex;
-import org.json.JSONObject;
 
+/**
+ * Provides a facility to send both private and public API calls to Bitstamp. There is no persistent connection, each 
+ * call a seperate connection, though the {@code HttpClient} instance persists.
+ */
 public class BitstampAPIConnection
 {
     private String defaultApiKeyPath = "key";
@@ -20,18 +24,34 @@ public class BitstampAPIConnection
     private String apiKey = null;
     private String apiKeySecret = null;
 
-    private final HttpClient client = HttpClient.newHttpClient();
+    private final int MAX_RETRY = 3;
 
+    /**
+     * Creates a new BitstampAPIConnection instance, attempting to load keys from default locations relative to the 
+     * execution location: "key" and "secretKey", (No file extension).
+     */
     public BitstampAPIConnection()
     {
         loadKeys(defaultApiKeyPath, defaultApiKeySecretPath);
     }
 
+    /**
+     * Creates a new BitstampAPIConnection instance, attempting to load keys from the provided locations.
+     *  
+     * @param apiKeyPath path to load API Key from
+     * @param apiKeySecretPath path to load the API Key Scret from
+     */
     public BitstampAPIConnection(String apiKeyPath, String apiKeySecretPath)
     {
         loadKeys(apiKeyPath, apiKeySecretPath);
     }
 
+    /**
+     * Loads keys into this instance using the provided paths.
+     * 
+     * @param keyPath path to load API Key from
+     * @param keySecretPath path to load the API Key Scret from
+     */
     private void loadKeys(String keyPath, String keySecretPath)
     {
         try
@@ -47,45 +67,72 @@ public class BitstampAPIConnection
         }
     }
     
+    /**
+     * Send an API call to a public endpoint on Bitstamp's API.
+     * 
+     * @param endPoint the endpoint to call
+     * @return the API endpoint response
+     */
     public String sendPublicRequest(String endPoint)
     {
         String urlHost = "www.bitstamp.net";
         String urlPath = endPoint;
 
         HttpResponse<String> response = null;
-        try
+        int i = 0;
+        while (true)
         {
-            HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create("https://" + urlHost + urlPath))
-                .GET()
-                .build();
-
-            response = client.send(request, HttpResponse.BodyHandlers.ofString());
-
-            if (response.statusCode() != 200)
+            try
             {
-                JSONObject errorResp = new JSONObject();
-                errorResp.put("status", "failure");
-                errorResp.put("code", response.statusCode());
-                errorResp.put("error", "status code not 200");
-                System.out.println("Error: got response code " + response.statusCode());
-                return errorResp.toString();
-            }
+                HttpClient client = HttpClient.newHttpClient();
+                HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("https://" + urlHost + urlPath))
+                    .GET()
+                    .build();
 
-            String resp = response.body();
-            return resp;
+                response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() != 200)
+                {
+                    throw new BadResponseException(response.statusCode());
+                }
+
+                String resp = response.body();
+                return resp;
+            }
+            catch (BadResponseException e)
+            {
+                if (i++ < MAX_RETRY)
+                {
+                    System.out.println("[API Connection]: Server returned bad response. Retrying...");
+                    continue;
+                }
+                throw new RuntimeException(e);
+            }
+            catch (ConnectException e)
+            {
+                if (i++ < MAX_RETRY)
+                {
+                    System.out.println("[API Connection]: Server failed to connect. Retrying...");
+                    continue;
+                }
+                throw new RuntimeException(e);
+            }
+            catch (Exception e)
+            {
+                throw new RuntimeException(e);
+            }
         }
-        catch (Exception e)
-        {
-            JSONObject errorResp = new JSONObject();
-            errorResp.put("status", "failure");
-            errorResp.put("code", response != null ? response.statusCode() : "N/A");
-            errorResp.put("error", "Non-matching signatures");
-            System.out.println("Request/response signatures do not match");
-            return errorResp.toString();
-        }
+        
     }
 
+    /**
+     * Send an API call to a public endpoint on Bitstamp's API.
+     * 
+     * @param endPoint the endpoint to call
+     * @param params the parameters to send with the request
+     * @return the API endpoint response
+     */
     public String sendPublicRequest(String endPoint, String[] params)
     {
         String urlHost = "www.bitstamp.net";
@@ -97,50 +144,65 @@ public class BitstampAPIConnection
         }
         
         HttpResponse<String> response = null;
-        try
+
+        int i = 0;
+        while (true)
         {
-            HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create("https://" + urlHost + urlPath))
-                .GET()
-                .build();
-
-            response = client.send(request, HttpResponse.BodyHandlers.ofString());
-
-            if (response.statusCode() != 200)
+            try
             {
-                JSONObject errorResp = new JSONObject();
-                errorResp.put("status", "failure");
-                errorResp.put("code", response.statusCode());
-                errorResp.put("error", "status code not 200");
-                System.out.println("Error: got response code " + response.statusCode());
-                return errorResp.toString();
+                HttpClient client = HttpClient.newHttpClient();
+                HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("https://" + urlHost + urlPath))
+                    .GET()
+                    .build();
+    
+                response = client.send(request, HttpResponse.BodyHandlers.ofString());
+    
+                if (response.statusCode() != 200)
+                {
+                    throw new BadResponseException(response.statusCode());
+                }
+    
+                String resp = response.body();
+                return resp;
             }
-
-            String resp = response.body();
-            return resp;
-        }
-        catch (Exception e)
-        {
-            JSONObject errorResp = new JSONObject();
-            errorResp.put("status", "failure");
-            errorResp.put("code", response != null ? response.statusCode() : "N/A");
-            errorResp.put("error", "Non-matching signatures");
-            System.out.println("Request/response signatures do not match");
-            return errorResp.toString();
+            catch (BadResponseException e)
+            {
+                if (i++ < MAX_RETRY)
+                {
+                    System.out.println("[API Connection]: Server returned bad response. Retrying...");
+                    continue;
+                }
+                throw new RuntimeException(e);
+            }
+            catch (ConnectException e)
+            {
+                if (i++ < MAX_RETRY)
+                {
+                    System.out.println("[API Connection]: Server failed to connect. Retrying...");
+                    continue;
+                }
+                throw new RuntimeException(e);
+            }
+            catch (Exception e)
+            {
+                throw new RuntimeException(e);
+            }
         }
     }
 
+    /**
+     * Send an API call to a public endpoint on Bitstamp's API.
+     * 
+     * @param endPoint the endpoint to call
+     * @return the API endpoint response
+     */
     public String sendPrivateRequest(String endPoint)
     {
         // Check API Key and API Key Secret are present
         if (this.apiKey == null || this.apiKeySecret == null)
         {
-            JSONObject errorResp = new JSONObject();
-            errorResp.put("status", "failure");
-            errorResp.put("code", "N/A");
-            errorResp.put("error", "Missing API Key or API Key Secret");
-            System.out.println("Missing API Key or API Key Secret");
-            return errorResp.toString();
+            throw new RuntimeException(new APIKeyMissingException());
         }
 
         String apiKey = String.format("%s %s", "BITSTAMP", this.apiKey);
@@ -154,77 +216,100 @@ public class BitstampAPIConnection
         String contentType = "application/x-www-form-urlencoded";
         String version = "v2";
         String payloadString = "offset=1";
-        String signature = apiKey + httpVerb + urlHost + urlPath + urlQuery + contentType + nonce + timestamp + version
-                + payloadString;
+        String signature = apiKey + httpVerb + urlHost + urlPath + urlQuery + contentType + nonce + timestamp + version + payloadString;
 
-        try
+        int i = 0;
+        while (true)
         {
-            SecretKeySpec secretKey = new SecretKeySpec(apiKeySecret.getBytes(), "HmacSHA256");
-            Mac mac = Mac.getInstance("HmacSHA256");
-            mac.init(secretKey);
-            byte[] rawHmac = mac.doFinal(signature.getBytes());
-            signature = new String(Hex.encodeHex(rawHmac)).toUpperCase();
-
-            HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create("https://" + urlHost + urlPath))
-                .POST(HttpRequest.BodyPublishers.ofString(payloadString))
-                .setHeader("X-Auth", apiKey)
-                .setHeader("X-Auth-Signature", signature)
-                .setHeader("X-Auth-Nonce", nonce)
-                .setHeader("X-Auth-Timestamp", timestamp)
-                .setHeader("X-Auth-Version", version)
-                .setHeader("Content-Type", contentType)
-                .build();
-
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-
-            if (response.statusCode() != 200)
+            try
             {
-                JSONObject errorResp = new JSONObject();
-                errorResp.put("status", "failure");
-                errorResp.put("code", response.statusCode());
-                errorResp.put("error", "status code not 200");
-                System.out.println("Error: got response code " + response.statusCode());
-                return errorResp.toString();
+                SecretKeySpec secretKey = new SecretKeySpec(apiKeySecret.getBytes(), "HmacSHA256");
+                Mac mac = Mac.getInstance("HmacSHA256");
+                mac.init(secretKey);
+                byte[] rawHmac = mac.doFinal(signature.getBytes());
+                signature = new String(Hex.encodeHex(rawHmac)).toUpperCase();
+    
+                HttpClient client = HttpClient.newHttpClient();
+                HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("https://" + urlHost + urlPath))
+                    .POST(HttpRequest.BodyPublishers.ofString(payloadString))
+                    .setHeader("X-Auth", apiKey)
+                    .setHeader("X-Auth-Signature", signature)
+                    .setHeader("X-Auth-Nonce", nonce)
+                    .setHeader("X-Auth-Timestamp", timestamp)
+                    .setHeader("X-Auth-Version", version)
+                    .setHeader("Content-Type", contentType)
+                    .build();
+    
+                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+    
+                if (response.statusCode() != 200)
+                {
+                    throw new BadResponseException(response.statusCode());
+                }
+    
+                String serverSignature = response.headers().map().get("x-server-auth-signature").get(0);
+                String responseContentType = response.headers().map().get("Content-Type").get(0);
+                String stringToSign = nonce + timestamp + responseContentType + response.body();
+    
+                mac.init(secretKey);
+                byte[] rawHmacServerCheck = mac.doFinal(stringToSign.getBytes());
+                String newSignature = new String(Hex.encodeHex(rawHmacServerCheck));
+    
+                if (!newSignature.equals(serverSignature))
+                {
+                    throw new SignatureMismatchException();
+                }
+    
+                return response.body();
             }
-
-            String serverSignature = response.headers().map().get("x-server-auth-signature").get(0);
-            String responseContentType = response.headers().map().get("Content-Type").get(0);
-            String stringToSign = nonce + timestamp + responseContentType + response.body();
-
-            mac.init(secretKey);
-            byte[] rawHmacServerCheck = mac.doFinal(stringToSign.getBytes());
-            String newSignature = new String(Hex.encodeHex(rawHmacServerCheck));
-
-            if (!newSignature.equals(serverSignature))
+            catch (SignatureMismatchException e)
             {
-                JSONObject errorResp = new JSONObject();
-                errorResp.put("status", "failure");
-                errorResp.put("code", response.statusCode());
-                errorResp.put("error", "Non-matching signatures");
-                System.out.println("Request/response signatures do not match");
-                return errorResp.toString();
+                if (i++ < MAX_RETRY)
+                {
+                    System.out.println("[API Connection]: " + e.getMessage() + " Retrying...");
+                    continue;
+                }
+                throw new RuntimeException(e);
             }
-
-            return response.body();
-        }
-        catch (Exception e)
-        {
-            throw new RuntimeException(e);
+            catch (BadResponseException e)
+            {
+                if (i++ < MAX_RETRY)
+                {
+                    System.out.println("[API Connection]: " + e.getMessage() + " Retrying...");
+                    continue;
+                }
+                throw new RuntimeException(e);
+            }
+            catch (ConnectException e)
+            {
+                if (i++ < MAX_RETRY)
+                {
+                    System.out.println("[API Connection]: Server failed to connect. Retrying...");
+                    continue;
+                }
+                throw new RuntimeException(e);
+            }
+            catch (Exception e)
+            {
+                throw new RuntimeException(e);
+            }
         }
     }
 
+    /**
+     * Send an API call to a public endpoint on Bitstamp's API.
+     * 
+     * @param endPoint the endpoint to call
+     * @param params the parameters to send with the request
+     * @return the API endpoint response
+     */
     public String sendPrivateRequest(String endPoint, String[] params)
     {
         // Check API Key and API Key Secret are present
         if (this.apiKey == null || this.apiKeySecret == null)
         {
-            JSONObject errorResp = new JSONObject();
-            errorResp.put("status", "failure");
-            errorResp.put("code", "N/A");
-            errorResp.put("error", "Missing API Key or API Key Secret");
-            System.out.println("Missing API Key or API Key Secret");
-            return errorResp.toString();
+            throw new RuntimeException(new APIKeyMissingException());
         }
 
         String apiKey = String.format("%s %s", "BITSTAMP", this.apiKey);
@@ -244,63 +329,84 @@ public class BitstampAPIConnection
             payloadString += "&" + param;
         }
 
-        String signature = apiKey + httpVerb + urlHost + urlPath + urlQuery + contentType + nonce + timestamp + version
-                + payloadString;
+        String signature = apiKey + httpVerb + urlHost + urlPath + urlQuery + contentType + nonce + timestamp + version + payloadString;
 
-        try
+        int i = 0;
+        while (true)
         {
-            SecretKeySpec secretKey = new SecretKeySpec(apiKeySecret.getBytes(), "HmacSHA256");
-            Mac mac = Mac.getInstance("HmacSHA256");
-            mac.init(secretKey);
-            byte[] rawHmac = mac.doFinal(signature.getBytes());
-            signature = new String(Hex.encodeHex(rawHmac)).toUpperCase();
-
-            HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create("https://" + urlHost + urlPath))
-                .POST(HttpRequest.BodyPublishers.ofString(payloadString))
-                .setHeader("X-Auth", apiKey)
-                .setHeader("X-Auth-Signature", signature)
-                .setHeader("X-Auth-Nonce", nonce)
-                .setHeader("X-Auth-Timestamp", timestamp)
-                .setHeader("X-Auth-Version", version)
-                .setHeader("Content-Type", contentType)
-                .build();
-
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-
-            if (response.statusCode() != 200)
+            try
             {
-                JSONObject errorResp = new JSONObject();
-                errorResp.put("status", "failure");
-                errorResp.put("code", response.statusCode());
-                errorResp.put("error", "status code not 200");
-                System.out.println("Error: got response code " + response.statusCode());
-                return errorResp.toString();
+                SecretKeySpec secretKey = new SecretKeySpec(apiKeySecret.getBytes(), "HmacSHA256");
+                Mac mac = Mac.getInstance("HmacSHA256");
+                mac.init(secretKey);
+                byte[] rawHmac = mac.doFinal(signature.getBytes());
+                signature = new String(Hex.encodeHex(rawHmac)).toUpperCase();
+
+                HttpClient client = HttpClient.newHttpClient();
+                HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("https://" + urlHost + urlPath))
+                    .POST(HttpRequest.BodyPublishers.ofString(payloadString))
+                    .setHeader("X-Auth", apiKey)
+                    .setHeader("X-Auth-Signature", signature)
+                    .setHeader("X-Auth-Nonce", nonce)
+                    .setHeader("X-Auth-Timestamp", timestamp)
+                    .setHeader("X-Auth-Version", version)
+                    .setHeader("Content-Type", contentType)
+                    .build();
+
+                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() != 200)
+                {
+                    throw new BadResponseException(response.statusCode());
+                }
+
+                String serverSignature = response.headers().map().get("x-server-auth-signature").get(0);
+                String responseContentType = response.headers().map().get("Content-Type").get(0);
+                String stringToSign = nonce + timestamp + responseContentType + response.body();
+
+                mac.init(secretKey);
+                byte[] rawHmacServerCheck = mac.doFinal(stringToSign.getBytes());
+                String newSignature = new String(Hex.encodeHex(rawHmacServerCheck));
+
+                if (!newSignature.equals(serverSignature))
+                {
+                    throw new SignatureMismatchException();
+                }
+
+                return response.body();
             }
-
-            String serverSignature = response.headers().map().get("x-server-auth-signature").get(0);
-            String responseContentType = response.headers().map().get("Content-Type").get(0);
-            String stringToSign = nonce + timestamp + responseContentType + response.body();
-
-            mac.init(secretKey);
-            byte[] rawHmacServerCheck = mac.doFinal(stringToSign.getBytes());
-            String newSignature = new String(Hex.encodeHex(rawHmacServerCheck));
-
-            if (!newSignature.equals(serverSignature))
+            catch (SignatureMismatchException e)
             {
-                JSONObject errorResp = new JSONObject();
-                errorResp.put("status", "failure");
-                errorResp.put("code", response.statusCode());
-                errorResp.put("error", "Non-matching signatures");
-                System.out.println("Request/response signatures do not match");
-                return errorResp.toString();
+                if (i++ < MAX_RETRY)
+                {
+                    System.out.println("[API Connection]: " + e.getMessage() + " Retrying...");
+                    continue;
+                }
+                throw new RuntimeException(e);
             }
-
-            return response.body();
-        }
-        catch (Exception e)
-        {
-            throw new RuntimeException(e);
+            catch (BadResponseException e)
+            {
+                if (i++ < MAX_RETRY)
+                {
+                    System.out.println("[API Connection]: " + e.getMessage() + " Retrying...");
+                    continue;
+                }
+                throw new RuntimeException(e);
+            }
+            catch (ConnectException e)
+            {
+                if (i++ < MAX_RETRY)
+                {
+                    System.out.println("[API Connection]: Server failed to connect. Retrying...");
+                    continue;
+                }
+                throw new RuntimeException(e);
+            }
+            catch (Exception e)
+            {
+                throw new RuntimeException(e);
+            }
         }
     }
 }
