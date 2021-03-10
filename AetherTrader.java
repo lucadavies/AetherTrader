@@ -577,6 +577,9 @@ public class AetherTrader
         autoTradingTimer.scheduleAtFixedRate(new AutoTraderTask(this), 0, 60000);
     }
 
+    /**
+     * Advances the auto trader to it's next state.
+     */
     public void doNextAutoTrade()
     {        
         //get market state now
