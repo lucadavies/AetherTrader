@@ -561,6 +561,21 @@ public class AetherTrader extends TimerTask
     
     //#region Auto Trading methods
 
+    /**
+     * Begins running the automatic trading programme.
+     */
+    public void startAuto()
+    {
+        wallet = new TestWallet(new BigDecimal(0.00338066), new BigDecimal(0));
+        isAutotrading = true;
+
+        // TODO setup: cancel current orders
+        tradingState = getTradingState();
+        setUpMarketHistory();
+        autoTradingTimer = new Timer();
+        autoTradingTimer.scheduleAtFixedRate(this, 0, 60000);
+    }
+
     public void run()
     {        
         //get market state now
@@ -1187,11 +1202,11 @@ public class AetherTrader extends TimerTask
     }
 
     /**
-     * Begins running thr automatic trading programme.
+     * Prompts the user to confirm if they want to begin running the automatic trading programme.
      * 
      * @return A comment reflecting on the user's decision to begin the programme or not. (WIP)
      */
-    public String startAuto()
+    public String userStartAuto()
     {
         System.out.print("This feature is currently HEAVILY in development ");
         System.out.print("and so will not trade on your actual and instead uses a test wallet. ");
@@ -1199,14 +1214,7 @@ public class AetherTrader extends TimerTask
         System.out.println("This will allow the program to begin trading automaticaly according to the in-built logic. Are you sure you want to continue?");
         if (userConfirm())
         {
-            wallet = new TestWallet(new BigDecimal(0.00338066), new BigDecimal(0));
-            isAutotrading = true;
-
-            // TODO setup: cancel current orders
-            tradingState = getTradingState();
-            setUpMarketHistory();
-            autoTradingTimer = new Timer();
-            autoTradingTimer.scheduleAtFixedRate(this, 0, 60000);
+            startAuto();
             return "Bold move.\n";
         }
         else
@@ -1248,7 +1256,7 @@ public class AetherTrader extends TimerTask
                     System.out.println(trader.userBuyLimitOrder());
                     break;
                 case 9:
-                    System.out.println(trader.startAuto());
+                    System.out.println(trader.userStartAuto());
                     break menu;
                 case 10:
                     break;
