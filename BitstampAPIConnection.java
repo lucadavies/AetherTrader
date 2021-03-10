@@ -25,7 +25,6 @@ public class BitstampAPIConnection
     private String apiKeySecret = null;
 
     private final int MAX_RETRY = 3;
-    private final HttpClient client = HttpClient.newHttpClient();
 
     /**
      * Creates a new BitstampAPIConnection instance, attempting to load keys from default locations relative to the 
@@ -85,6 +84,7 @@ public class BitstampAPIConnection
         {
             try
             {
+                HttpClient client = HttpClient.newHttpClient();
                 HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("https://" + urlHost + urlPath))
                     .GET()
@@ -150,6 +150,7 @@ public class BitstampAPIConnection
         {
             try
             {
+                HttpClient client = HttpClient.newHttpClient();
                 HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("https://" + urlHost + urlPath))
                     .GET()
@@ -228,6 +229,7 @@ public class BitstampAPIConnection
                 byte[] rawHmac = mac.doFinal(signature.getBytes());
                 signature = new String(Hex.encodeHex(rawHmac)).toUpperCase();
     
+                HttpClient client = HttpClient.newHttpClient();
                 HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("https://" + urlHost + urlPath))
                     .POST(HttpRequest.BodyPublishers.ofString(payloadString))
@@ -340,6 +342,7 @@ public class BitstampAPIConnection
                 byte[] rawHmac = mac.doFinal(signature.getBytes());
                 signature = new String(Hex.encodeHex(rawHmac)).toUpperCase();
 
+                HttpClient client = HttpClient.newHttpClient();
                 HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("https://" + urlHost + urlPath))
                     .POST(HttpRequest.BodyPublishers.ofString(payloadString))
