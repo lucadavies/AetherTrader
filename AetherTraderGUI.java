@@ -14,6 +14,9 @@ public class AetherTraderGUI extends TimerTask implements ActionListener
     private JFrame frame;
     private JPanel panMain;
     private JPanel panData;
+    private JTabbedPane tabCtl;
+    private JPanel panDash;
+    private JPanel panLimit;
     private JButton btnTest;
     private JLabel lblLast = new JLabel();
     private JLabel lblHigh = new JLabel();
@@ -32,6 +35,11 @@ public class AetherTraderGUI extends TimerTask implements ActionListener
         frame.setSize(800, 400);
 
         panMain = new JPanel(new BorderLayout());
+        panDash = new JPanel();
+        panLimit = new JPanel();
+        tabCtl = new JTabbedPane(JTabbedPane.TOP);
+        tabCtl.addTab("Dashboard", panDash);
+        tabCtl.addTab("Limit Order", panLimit);
         panData = new JPanel(new GridLayout(4, 2));
         btnTest = new JButton("Test");
         btnTest.addActionListener(this);
@@ -49,7 +57,7 @@ public class AetherTraderGUI extends TimerTask implements ActionListener
         panData.add(lblVolume);
 
         panMain.add(new JLabel("Aether Trader Dashboard", SwingConstants.CENTER), BorderLayout.NORTH);
-        panMain.add(new JButton(), BorderLayout.CENTER);
+        panMain.add(tabCtl, BorderLayout.CENTER);
         panMain.add(new JButton(), BorderLayout.EAST);
         panMain.add(btnTest, BorderLayout.SOUTH);
         
