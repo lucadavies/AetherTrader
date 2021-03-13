@@ -1,5 +1,4 @@
 import javax.swing.*;
-import javax.swing.border.EmptyBorder;
 
 import org.json.JSONObject;
 
@@ -14,15 +13,18 @@ public class AetherTraderGUI extends TimerTask implements ActionListener
     private JFrame frame = new JFrame("Aether Trader");
     private JPanel panMain = new JPanel(new BorderLayout());
     private JPanel panData = new JPanel(new GridLayout(4, 2));
+    private JPanel panCentreContainer = new JPanel(new BorderLayout());
     private JPanel panDash = new JPanel(new FlowLayout());
     private JPanel panInstantOrders = new JPanel(new FlowLayout());
-    private JPanel panTradingBot = new JPanel(new FlowLayout());
+    private JPanel panBalance = new JPanel(new GridLayout(4, 2));
+    private JPanel panTradingBot = new JPanel(new GridLayout(1, 2, 20, 20));
     private JPanel panLimit = new JPanel();
     private JTabbedPane tabCtl = new JTabbedPane(JTabbedPane.TOP);
     private JButton btnInstantBuy = new JButton("Inst. Buy");
     private JButton btnInstantSell = new JButton("Inst. Sell");
-    private JButton btnStartAutoTrading = new JButton("Launch Trading Bot");
-    private JButton btnStopAutoTrading = new JButton("Stop Trading Bot");
+    private JButton btnStartAutoTrading = new JButton("Launch");
+    private JButton btnStopAutoTrading = new JButton("Halt");
+    private JLabel lblTitle = new JLabel("Aether Trader Dashboard", SwingConstants.CENTER);
     private JLabel lblLast = new JLabel();
     private JLabel lblHigh = new JLabel();
     private JLabel lblLow = new JLabel();
@@ -37,14 +39,17 @@ public class AetherTraderGUI extends TimerTask implements ActionListener
 
         
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.setSize(800, 400);
+        frame.setSize(600, 400);
 
-        panMain.setBorder(new EmptyBorder(10, 10, 10, 10));
-        panMain.add(new JLabel("Aether Trader Dashboard", SwingConstants.CENTER), BorderLayout.NORTH);
+        panMain.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        panMain.add(lblTitle, BorderLayout.NORTH);
         panMain.add(panData, BorderLayout.WEST);        
-        panMain.add(tabCtl, BorderLayout.CENTER);
-        panMain.add(new JLabel("Open orders maybe?"), BorderLayout.EAST);
+        panMain.add(panCentreContainer, BorderLayout.CENTER);
+        panMain.add(panBalance, BorderLayout.EAST);
+
+        lblTitle.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
         
+        panData.setBorder(BorderFactory.createEmptyBorder(10, 0, 10, 10));
         panData.add(new JLabel("Last: "));
         panData.add(lblLast);
         panData.add(new JLabel("Low: "));
@@ -54,12 +59,14 @@ public class AetherTraderGUI extends TimerTask implements ActionListener
         panData.add(new JLabel("Volume: "));
         panData.add(lblVolume);
 
+        panCentreContainer.add(tabCtl, BorderLayout.CENTER);
+        panCentreContainer.add(panTradingBot, BorderLayout.SOUTH);
+
         tabCtl.addTab("Dashboard", panDash);
         tabCtl.addTab("Limit Order", panLimit);
         panLimit.add(lblHello);
         
         panDash.add(panInstantOrders);
-        panDash.add(panTradingBot);
         
         panInstantOrders.setBorder(BorderFactory.createTitledBorder("Instant Orders"));
         panInstantOrders.add(btnInstantBuy);
@@ -68,6 +75,8 @@ public class AetherTraderGUI extends TimerTask implements ActionListener
         panTradingBot.setBorder(BorderFactory.createTitledBorder("Trading Bot"));
         panTradingBot.add(btnStartAutoTrading);
         panTradingBot.add(btnStopAutoTrading);
+
+        panBalance.add(lblHello);
         
         btnInstantBuy.addActionListener(this);
         btnInstantSell.addActionListener(this);
