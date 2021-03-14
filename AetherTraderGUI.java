@@ -16,7 +16,7 @@ public class AetherTraderGUI extends TimerTask implements ActionListener
     private JPanel panCentreContainer = new JPanel(new BorderLayout());
     private JPanel panDash = new JPanel(new FlowLayout());
     private JPanel panInstantOrders = new JPanel(new FlowLayout());
-    private JPanel panBalance = new JPanel(new GridLayout(4, 2));
+    private JPanel panBalance = new JPanel(new GridLayout(5, 2));
     private JPanel panTradingBot = new JPanel(new GridLayout(1, 2, 20, 20));
     private JPanel panLimit = new JPanel();
     private JTabbedPane tabCtl = new JTabbedPane(JTabbedPane.TOP);
@@ -29,6 +29,11 @@ public class AetherTraderGUI extends TimerTask implements ActionListener
     private JLabel lblHigh = new JLabel();
     private JLabel lblLow = new JLabel();
     private JLabel lblVolume = new JLabel();
+    private JLabel lblEurAval = new JLabel();
+    private JLabel lblEurBal = new JLabel();
+    private JLabel lblBtcAval = new JLabel();
+    private JLabel lblBtcBal = new JLabel();
+    private JLabel lblTotalValAval = new JLabel();
     private JLabel lblHello = new JLabel("Hello!");
     private AetherTrader trader;
     private Timer ticker;
@@ -37,9 +42,22 @@ public class AetherTraderGUI extends TimerTask implements ActionListener
     {
         trader = new AetherTrader();
 
-        
-        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        // Used for custom exit behaviour
+        WindowListener wl = new WindowAdapter()
+        {
+            @Override
+            public void windowClosing(WindowEvent windowEvent)
+            {
+                String msg = "Auto trader is still running. Are you sure you want to exit?";
+                if (!trader.isAutoTrading() || JOptionPane.showConfirmDialog(frame, msg, "Close Window?", JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION)
+                {
+                    System.exit(0);
+                }
+            }
+        };
+        frame.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
         frame.setSize(600, 400);
+        frame.addWindowListener(wl);
 
         panMain.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         panMain.add(lblTitle, BorderLayout.NORTH);
@@ -76,7 +94,24 @@ public class AetherTraderGUI extends TimerTask implements ActionListener
         panTradingBot.add(btnStartAutoTrading);
         panTradingBot.add(btnStopAutoTrading);
 
-        panBalance.add(lblHello);
+        panBalance.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 0));
+        panBalance.add(new JLabel("EUR Available: "));
+        panBalance.add(lblEurAval);
+        panBalance.add(new JLabel("BTC Available: "));
+        panBalance.add(lblBtcAval);
+        panBalance.add(new JLabel("EUR Balance: "));
+        panBalance.add(lblEurBal);
+        panBalance.add(new JLabel("BTC Balance: "));
+        panBalance.add(lblBtcBal);
+        panBalance.add(new JLabel("Total Value: "));
+        panBalance.add(lblTotalValAval);
+
+        JSONObject balanceData = trader.getBalance();
+        lblEurAval.setText("€" + balanceData.getString("eur_available"));
+        lblBtcAval.setText("€" + balanceData.getString("btc_available"));
+        lblEurBal.setText("€" + balanceData.getString("eur_balance"));
+        lblBtcBal.setText("€" + balanceData.getString("btc_balance"));
+        lblTotalValAval.setText("€" + balanceData.getBigDecimal("value").setScale(2, RoundingMode.FLOOR).toString());
         
         btnInstantBuy.addActionListener(this);
         btnInstantSell.addActionListener(this);
