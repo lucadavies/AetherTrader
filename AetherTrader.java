@@ -601,6 +601,7 @@ public class AetherTrader
      */
     public void stopAuto()
     {
+        isAutotrading = false;
         if (autoTradingTimer != null)
         {
             autoTradingTimer.cancel();
@@ -1199,7 +1200,7 @@ public class AetherTrader
         return s;
     }
 
-    private boolean getIsAutoTrading()
+    public boolean isAutoTrading()
     {
         return isAutotrading;
     }
@@ -1271,7 +1272,7 @@ public class AetherTrader
             }
             trader.getUserInput("Press enter to continue...");
         }
-        if (trader.getIsAutoTrading())
+        if (trader.isAutoTrading())
         {
             while (true)
             {
