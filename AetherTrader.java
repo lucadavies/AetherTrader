@@ -147,6 +147,17 @@ public class AetherTrader
         return result;
     }
 
+    public String userGetBalance()
+    {
+        if (conn.canSendPrivateReq())
+        {
+            return formatJSON(getBalance());
+        }
+        else
+        {
+            return "That function is unavailable. Please ensure your API Key and API Secret are in this folder";
+        }
+    }
     /**
      * Returns a JSONObject containing order data on account. Each represented as a JSONObject with keys:
      * "datetime", "amount", "currecny_pair", "price", "id" and "type".
@@ -183,27 +194,34 @@ public class AetherTrader
      */
     public String userGetOpenOrders()
     {
-        JSONObject orderData = getOpenOrders();
-        String result = "\n";
-        if (orderData.getString("status").equals("success"))
+        if (conn.canSendPrivateReq())
         {
-            if (orderData.getJSONArray("orders").length() == 0)
+            JSONObject orderData = getOpenOrders();
+            String result = "\n";
+            if (orderData.getString("status").equals("success"))
             {
-                result += "No orders to show.\n";
+                if (orderData.getJSONArray("orders").length() == 0)
+                {
+                    result += "No orders to show.\n";
+                }
+                else
+                {
+                    result += "Open orders:\n";
+                    result += formatJSONArray(orderData.getJSONArray("orders"));
+                }
             }
             else
             {
-                result += "Open orders:\n";
-                result += formatJSONArray(orderData.getJSONArray("orders"));
+                result += "Error:";
+                result += formatJSON(orderData);
             }
+            
+            return result;
         }
         else
         {
-            result += "Error:";
-            result += formatJSON(orderData);
+            return "That function is unavailable. Please ensure your API Key and API Secret are in this folder";
         }
-        
-        return result;
     }
     
     /**
@@ -239,36 +257,43 @@ public class AetherTrader
      */
     public String userCancelOrder()
     {
-        System.out.println();
-        long id = Long.parseLong(getUserInput("Order ID: "));
-
-        String result;
-        JSONObject order = getOrder(id);
-        System.out.println(formatJSON(order));
-        if (order.getString("status").equals("success"))
+        if (conn.canSendPrivateReq())
         {
-            if (userConfirm())
+            System.out.println();
+            long id = Long.parseLong(getUserInput("Order ID: "));
+    
+            String result;
+            JSONObject order = getOrder(id);
+            System.out.println(formatJSON(order));
+            if (order.getString("status").equals("success"))
             {
-                JSONObject cOrder = cancelOrder(id);
-                if (cOrder.getString("status").equals("success"))
+                if (userConfirm())
                 {
-                    result = "Success, order cancelled.\n";
+                    JSONObject cOrder = cancelOrder(id);
+                    if (cOrder.getString("status").equals("success"))
+                    {
+                        result = "Success, order cancelled.\n";
+                    }
+                    else
+                    {
+                        result = "WARNING: order not cancelled.\n";
+                    }
                 }
                 else
                 {
-                    result = "WARNING: order not cancelled.\n";
+                    result = "Operation cancelled.\n";
                 }
             }
             else
             {
-                result = "Operation cancelled.\n";
+                result = "No order with id " + id + ".";
             }
+            return result;            
         }
         else
         {
-            result = "No order with id " + id + ".";
+            return "That function is unavailable. Please ensure your API Key and API Secret are in this folder";
         }
-        return result;        
     }
 
     /**
@@ -308,34 +333,41 @@ public class AetherTrader
      */
     public String userSellInstantOrder()
     {
-        System.out.println();
-        BigDecimal amt =  new BigDecimal(getUserInput("Amount (BTC): "));
-
-        double price = getBTCPrice();
-        if (price == -1)
+        if (conn.canSendPrivateReq())
         {
-            return "Unable to get BTC price. Unable to place order. Try again.";
-        }
-        String result;
-        System.out.println(String.format("Place sell instant order for %.8f BTC at ~€%.2f (Value: ~€%.2f)", amt, price, amt.multiply(new BigDecimal(price))));
-        if (userConfirm())
-        {
-            JSONObject sellOrder = placeSellInstantOrder(amt);
-            if (sellOrder.getString("status").equals("success"))
+            System.out.println();
+            BigDecimal amt =  new BigDecimal(getUserInput("Amount (BTC): "));
+    
+            double price = getBTCPrice();
+            if (price == -1)
             {
-                result = "Success, sell limit order placed:\n";
+                return "Unable to get BTC price. Unable to place order. Try again.";
+            }
+            String result;
+            System.out.println(String.format("Place sell instant order for %.8f BTC at ~€%.2f (Value: ~€%.2f)", amt, price, amt.multiply(new BigDecimal(price))));
+            if (userConfirm())
+            {
+                JSONObject sellOrder = placeSellInstantOrder(amt);
+                if (sellOrder.getString("status").equals("success"))
+                {
+                    result = "Success, sell limit order placed:\n";
+                }
+                else
+                {
+                    result = "Error placing order.\n";  
+                }
+                result += formatJSON(sellOrder);
             }
             else
             {
-                result = "Error placing order.\n";  
-            }
-            result += formatJSON(sellOrder);
+                result = "Operation cancelled.\n";
+            }  
+            return result;
         }
         else
         {
-            result = "Operation cancelled.\n";
-        }  
-        return result;
+            return "That function is unavailable. Please ensure your API Key and API Secret are in this folder";
+        }
     }
 
     /**
@@ -375,35 +407,42 @@ public class AetherTrader
      */
     public String userBuyInstantOrder()
     {
-        System.out.println();
-        BigDecimal amt = new BigDecimal((getUserInput("Amount (EUR): ")));
-
-        double price = getBTCPrice();
-        if (price == -1)
+        if (conn.canSendPrivateReq())
         {
-            return "Unable to get BTC price. Unable to place order. Try again.";
-        }
-        String result;
-        System.out.println(String.format("Place buy instant order for %.8f BTC at ~€%.2f (Value: ~%.8fBTC)", amt, price, amt.divide(new BigDecimal(price), RoundingMode.HALF_DOWN)));
-        if (userConfirm())
-        {
-            JSONObject buyOrder = placeBuyInstantOrder(amt);
-            if (buyOrder.getString("status").equals("success"))
+            System.out.println();
+            BigDecimal amt = new BigDecimal((getUserInput("Amount (EUR): ")));
+    
+            double price = getBTCPrice();
+            if (price == -1)
             {
-                result = "Success, sell limit order placed:\n";
-                result += formatJSON(buyOrder);
+                return "Unable to get BTC price. Unable to place order. Try again.";
+            }
+            String result;
+            System.out.println(String.format("Place buy instant order for %.8f BTC at ~€%.2f (Value: ~%.8fBTC)", amt, price, amt.divide(new BigDecimal(price), RoundingMode.HALF_DOWN)));
+            if (userConfirm())
+            {
+                JSONObject buyOrder = placeBuyInstantOrder(amt);
+                if (buyOrder.getString("status").equals("success"))
+                {
+                    result = "Success, sell limit order placed:\n";
+                    result += formatJSON(buyOrder);
+                }
+                else
+                { 
+                    result = "Error placing order.\n";
+                    result += formatJSON(buyOrder);
+                }
             }
             else
-            { 
-                result = "Error placing order.\n";
-                result += formatJSON(buyOrder);
-            }
+            {
+                result = "Operation cancelled.\n";
+            }  
+            return result;
         }
         else
         {
-            result = "Operation cancelled.\n";
-        }  
-        return result;
+            return "That function is unavailable. Please ensure your API Key and API Secret are in this folder";
+        }
     }
 
     /**
@@ -454,31 +493,38 @@ public class AetherTrader
      */
     public String userSellLimitOrder()
     {
-        System.out.println();
-        BigDecimal amt =  new BigDecimal(getUserInput("Amount (BTC): "));
-        double price = Double.parseDouble(getUserInput("Price (EUR): "));
-
-        String result;
-        System.out.println(String.format("Place sell limit order for %.8f BTC at €%.2f (Value: €%.2f)", amt, price, amt.multiply(new BigDecimal(price))));
-        if (userConfirm())
+        if (conn.canSendPrivateReq())
         {
-            JSONObject sellOrder = placeSellLimitOrder(amt, price);
-            if (sellOrder.getString("status").equals("success"))
+            System.out.println();
+            BigDecimal amt =  new BigDecimal(getUserInput("Amount (BTC): "));
+            double price = Double.parseDouble(getUserInput("Price (EUR): "));
+    
+            String result;
+            System.out.println(String.format("Place sell limit order for %.8f BTC at €%.2f (Value: €%.2f)", amt, price, amt.multiply(new BigDecimal(price))));
+            if (userConfirm())
             {
-                result = "Success, sell limit order placed:\n";
-                result += formatJSON(sellOrder);
+                JSONObject sellOrder = placeSellLimitOrder(amt, price);
+                if (sellOrder.getString("status").equals("success"))
+                {
+                    result = "Success, sell limit order placed:\n";
+                    result += formatJSON(sellOrder);
+                }
+                else
+                {
+                    result = "Error placing order.\n";
+                    result += formatJSON(sellOrder);
+                }
             }
             else
             {
-                result = "Error placing order.\n";
-                result += formatJSON(sellOrder);
-            }
+                result = "Operation cancelled.\n";
+            }  
+            return result;
         }
         else
         {
-            result = "Operation cancelled.\n";
-        }  
-        return result;
+            return "That function is unavailable. Please ensure your API Key and API Secret are in this folder";
+        }   
     }
 
     /**
@@ -529,32 +575,39 @@ public class AetherTrader
      */
     public String userBuyLimitOrder()
     {
-        System.out.println();
-        BigDecimal amt =  new BigDecimal(getUserInput("Amount (BTC): "));
-        double price = Double.parseDouble(getUserInput("Price (EUR): "));
-
-        JSONObject buyOrder = placeBuyLimitOrder(amt, price);
-        String result;
-
-        System.out.println(String.format("Place buy limit order for %.8f BTC at €%.2f (Value: €%.2f)", amt, price, amt.multiply(new BigDecimal(price))));
-        if (userConfirm())
+        if (conn.canSendPrivateReq())
         {
-            if (buyOrder.getString("status").equals("success"))
+            System.out.println();
+            BigDecimal amt =  new BigDecimal(getUserInput("Amount (BTC): "));
+            double price = Double.parseDouble(getUserInput("Price (EUR): "));
+    
+            JSONObject buyOrder = placeBuyLimitOrder(amt, price);
+            String result;
+    
+            System.out.println(String.format("Place buy limit order for %.8f BTC at €%.2f (Value: €%.2f)", amt, price, amt.multiply(new BigDecimal(price))));
+            if (userConfirm())
             {
-                result = "Success, sell limit order placed:\n";
-                result += formatJSON(buyOrder);
+                if (buyOrder.getString("status").equals("success"))
+                {
+                    result = "Success, sell limit order placed:\n";
+                    result += formatJSON(buyOrder);
+                }
+                else
+                {
+                    result = "Error placing order.\n";
+                    result += formatJSON(buyOrder);
+                }
             }
             else
             {
-                result = "Error placing order.\n";
-                result += formatJSON(buyOrder);
+                result = "Operation cancelled.\n";
             }
+            return result;
         }
         else
         {
-            result = "Operation cancelled.\n";
+            return "That function is unavailable. Please ensure your API Key and API Secret are in this folder";
         }
-        return result;
     }
 
     //#endregion
@@ -1098,15 +1151,25 @@ public class AetherTrader
      */
     public void showMenu()
     {
-        System.out.println("----- MENU -----");
-        System.out.println("1. Get BTC Info");
-        System.out.println("2. Get balance");
-        System.out.println("3. Get open orders");
-        System.out.println("4. Cancel order");
-        System.out.println("5. Place sell limit order");
-        System.out.println("6. Place buy limit order");
-        System.out.println("9. Start automatic trading programme");
-        System.out.println("0. Quit");
+        if (conn.canSendPrivateReq())
+        {
+            System.out.println("----- MENU -----");
+            System.out.println("1. Get BTC Info");
+            System.out.println("2. Get balance");
+            System.out.println("3. Get open orders");
+            System.out.println("4. Cancel order");
+            System.out.println("5. Place sell limit order");
+            System.out.println("6. Place buy limit order");
+            System.out.println("9. Start automatic trading programme");
+            System.out.println("0. Quit");
+        }
+        else
+        {
+            System.out.println("----- MENU -----");
+            System.out.println("1. Get BTC Info");
+            System.out.println("0. Quit");
+        }
+        
     }
 
     /**
@@ -1212,18 +1275,25 @@ public class AetherTrader
      */
     public String userStartAuto()
     {
-        System.out.print("This feature is currently HEAVILY in development ");
-        System.out.print("and so will not trade on your actual and instead uses a test wallet. ");
-        System.out.println("Watch for future releases for a working trading programme.");
-        System.out.println("This will allow the program to begin trading automaticaly according to the in-built logic. Are you sure you want to continue?");
-        if (userConfirm())
+        if (conn.canSendPrivateReq())
         {
-            startAuto();
-            return "Bold move.\n";
+            System.out.print("This feature is currently HEAVILY in development ");
+            System.out.print("and so will not trade on your actual and instead uses a test wallet. ");
+            System.out.println("Watch for future releases for a working trading programme.");
+            System.out.println("This will allow the program to begin trading automaticaly according to the in-built logic. Are you sure you want to continue?");
+            if (userConfirm())
+            {
+                startAuto();
+                return "Bold move.\n";
+            }
+            else
+            {
+                return "Wise choice.\n";
+            }
         }
         else
         {
-            return "Wise choice.\n";
+            return "That function is unavailable. Please ensure your API Key and API Secret are in this folder";
         }
     }
 
@@ -1245,7 +1315,7 @@ public class AetherTrader
                     System.out.println(formatJSON(trader.getBTCData()));
                     break;
                 case 2:
-                    System.out.println(formatJSON(trader.getBalance()));
+                    System.out.println(trader.userGetBalance());
                     break;
                 case 3:
                     System.out.println(trader.userGetOpenOrders());

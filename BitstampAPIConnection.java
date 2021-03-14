@@ -23,6 +23,7 @@ public class BitstampAPIConnection
     private String defaultApiKeySecretPath = "secretKey";
     private String apiKey = null;
     private String apiKeySecret = null;
+    private boolean privateFunctionsAvialable = false;
 
     private final int MAX_RETRY = 3;
 
@@ -58,6 +59,7 @@ public class BitstampAPIConnection
         {
             apiKey = Files.readString(Paths.get(keyPath));
             apiKeySecret = Files.readString(Paths.get(keySecretPath));
+            privateFunctionsAvialable = true;
         }
         catch (IOException e)
         {
@@ -408,5 +410,10 @@ public class BitstampAPIConnection
                 throw new RuntimeException(e);
             }
         }
+    }
+
+    public boolean canSendPrivateReq()
+    {
+        return privateFunctionsAvialable;
     }
 }
