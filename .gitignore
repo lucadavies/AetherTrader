@@ -3,3 +3,4 @@ keySecret
 .vscode/
 .vs/
 *.jar
+*.class
